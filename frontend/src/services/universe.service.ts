@@ -11,7 +11,4 @@ export const universeService = {
     apiClient
       .get<RegimeData>(`/regime/${token}/${timeframe}/latest`)
       .then((r) => r.data),
-
-  listRegimes: (timeframe = "15m") =>
-    apiClient.get<RegimeData[]>(`/regime/all/${timeframe}`).then((r) => r.data),
 };

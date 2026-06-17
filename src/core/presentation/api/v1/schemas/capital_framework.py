@@ -27,12 +27,12 @@ class RiskProfileResponse(BaseModel):
     name: str
     profile_type: RiskProfileType
     universe_scope: UniverseScope
-    risk_per_trade_pct: Decimal
+    risk_per_trade_pct: float
     max_open_positions: int
-    daily_loss_pct: Decimal
-    weekly_loss_pct: Decimal
-    drawdown_pct: Decimal
-    max_position_size_pct: Decimal
+    daily_loss_pct: float
+    weekly_loss_pct: float
+    drawdown_pct: float
+    max_position_size_pct: float
     min_position_size_lots: int
     is_active: bool
     description: str
@@ -82,8 +82,8 @@ class CapitalAllocationResponse(BaseModel):
     allocation_type: AllocationType
     universe_scope: UniverseScope
     capital_source_mode: CapitalSourceMode
-    allocated_capital: Decimal
-    allocated_margin: Decimal | None
+    allocated_capital: float
+    allocated_margin: float | None
     strategy_type: str | None
     is_active: bool
     description: str
@@ -160,16 +160,16 @@ class PortfolioListResponse(BaseModel):
 
 class EffectiveAccountStateResponse(BaseModel):
     capital_source_mode: CapitalSourceMode
-    broker_capital: Decimal
-    broker_margin: Decimal
-    configured_capital: Decimal
-    configured_margin: Decimal | None
-    effective_capital: Decimal
-    effective_margin: Decimal
-    effective_daily_loss_limit: Decimal
-    effective_weekly_loss_limit: Decimal
-    effective_drawdown_limit: Decimal
-    effective_risk_per_trade: Decimal
+    broker_capital: float
+    broker_margin: float
+    configured_capital: float
+    configured_margin: float | None
+    effective_capital: float
+    effective_margin: float
+    effective_daily_loss_limit: float
+    effective_weekly_loss_limit: float
+    effective_drawdown_limit: float
+    effective_risk_per_trade: float
     effective_max_open_positions: int
     risk_profile_id: uuid.UUID | None
     allocation_id: uuid.UUID | None

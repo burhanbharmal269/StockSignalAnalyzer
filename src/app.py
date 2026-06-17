@@ -240,12 +240,27 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.app_version,
         description=("Institutional-grade NSE FnO trading platform. Phase 1 — Project Foundation."),
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None,
+        redoc_url=None,
         openapi_url="/openapi.json",
         lifespan=lifespan,
         debug=settings.is_debug,
     )
+
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.openapi.docs import get_swagger_ui_html
+
+    _static_dir = pathlib.Path(__file__).resolve().parent / "static"
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+
+    @app.get("/docs", include_in_schema=False)
+    async def swagger_ui():
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title=settings.app_name + " - Swagger UI",
+            swagger_js_url="/static/swagger-ui-bundle.js",
+            swagger_css_url="/static/swagger-ui.css",
+        )
 
     # Middleware registration order: last-added = outermost.
     # RequestLoggingMiddleware must be outermost so correlation IDs are
