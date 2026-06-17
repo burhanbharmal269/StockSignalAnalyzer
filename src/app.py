@@ -9,7 +9,9 @@ This keeps the factory testable (each test call gets a fresh app).
 
 from __future__ import annotations
 
+import asyncio
 import pathlib
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -63,6 +65,52 @@ from core.presentation.api.v1.routers.execution_router import router as executio
 
 logger = get_logger(__name__)
 
+_STARTUP_TIMEOUT = 90.0   # seconds to wait for each infrastructure service
+
+
+async def _wait_for_postgres(session_factory, *, timeout: float = _STARTUP_TIMEOUT) -> None:
+    """Retry PostgreSQL until accepting connections or timeout expires."""
+    from sqlalchemy import text
+    deadline = time.monotonic() + timeout
+    delay = 1.0
+    last_exc: BaseException | None = None
+    while time.monotonic() < deadline:
+        try:
+            async with session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            logger.info("startup.postgres_ready")
+            return
+        except Exception as exc:
+            last_exc = exc
+            remaining = deadline - time.monotonic()
+            sleep_for = min(delay, max(0.0, remaining))
+            if sleep_for > 0:
+                logger.warning("startup.postgres_not_ready retrying_in=%.1fs", sleep_for)
+                await asyncio.sleep(sleep_for)
+            delay = min(delay * 2, 10.0)
+    raise RuntimeError(f"PostgreSQL not ready after {timeout:.0f}s") from last_exc
+
+
+async def _wait_for_redis(redis_client, *, timeout: float = _STARTUP_TIMEOUT) -> None:
+    """Retry Redis PING until accepting connections or timeout expires."""
+    deadline = time.monotonic() + timeout
+    delay = 1.0
+    last_exc: BaseException | None = None
+    while time.monotonic() < deadline:
+        try:
+            await redis_client.ping()
+            logger.info("startup.redis_ready")
+            return
+        except Exception as exc:
+            last_exc = exc
+            remaining = deadline - time.monotonic()
+            sleep_for = min(delay, max(0.0, remaining))
+            if sleep_for > 0:
+                logger.warning("startup.redis_not_ready retrying_in=%.1fs", sleep_for)
+                await asyncio.sleep(sleep_for)
+            delay = min(delay * 2, 10.0)
+    raise RuntimeError(f"Redis not ready after {timeout:.0f}s") from last_exc
+
 
 def _configure_cors(app: FastAPI, settings: AppSettings) -> None:
     """Register CORS middleware.
@@ -102,6 +150,12 @@ def create_app() -> FastAPI:
             environment=settings.environment.value,
         )
         _app.state.container = container
+
+        # Block until infrastructure is ready — eliminates 3-4 restart failures
+        # on local/VPS when PostgreSQL or Redis starts slower than the app process.
+        await _wait_for_postgres(container.db_session_factory())
+        await _wait_for_redis(container.redis_client())
+
         initializer = FirstRunInitializer(
             user_repository=container.user_repository(),
             password_service=container.password_service(),
@@ -172,8 +226,6 @@ def create_app() -> FastAPI:
         broker_execution_monitor = container.broker_execution_monitor_service()
         broker_reconciliation = container.broker_reconciliation_service()
 
-        import asyncio as _asyncio
-
         async def _broker_exec_monitor_loop() -> None:
             """Poll paper broker for OMS order status every 2 seconds."""
             while True:
@@ -181,7 +233,7 @@ def create_app() -> FastAPI:
                     await broker_execution_monitor.poll_and_process(session=None)
                 except Exception:
                     logger.exception("broker_execution_monitor.poll_and_process failed")
-                await _asyncio.sleep(2.0)
+                await asyncio.sleep(2.0)
 
         async def _broker_reconciliation_loop() -> None:
             """Run OMS reconciliation every 60 seconds."""
@@ -190,7 +242,7 @@ def create_app() -> FastAPI:
                     await broker_reconciliation.run()
                 except Exception:
                     logger.exception("broker_reconciliation.run failed")
-                await _asyncio.sleep(60.0)
+                await asyncio.sleep(60.0)
 
         auto_kill_switch = container.auto_kill_switch_service()
 
