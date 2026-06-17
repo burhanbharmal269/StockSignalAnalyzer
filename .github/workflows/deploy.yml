@@ -6,6 +6,7 @@ on:
 
 jobs:
   deploy:
+    needs: []   # add: [lint, test] once CI is green end-to-end
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
