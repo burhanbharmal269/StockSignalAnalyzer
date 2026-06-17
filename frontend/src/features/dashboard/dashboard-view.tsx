@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { brokerService } from "@/services/broker.service";
-import { healthService } from "@/services/health.service";
 import { MetricTile } from "@/components/shared/metric-tile";
 import { StatusIndicator } from "@/components/shared/status-indicator";
 import { PnLDisplay } from "@/components/shared/pnl-display";
@@ -10,6 +9,7 @@ import { TradingModeBadge } from "@/components/shared/trading-mode-badge";
 import { useEffectiveAccountState } from "@/hooks/use-capital-framework";
 import { usePositions } from "@/hooks/use-positions";
 import { useSignals } from "@/hooks/use-signals";
+import { useWSStatus } from "@/providers/websocket-provider";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { DollarSign, TrendingUp, Zap } from "lucide-react";
 import { PnLChart } from "./pnl-chart";
@@ -28,11 +28,7 @@ export function DashboardView() {
     refetchInterval: 30_000,
   });
 
-  const { data: health } = useQuery({
-    queryKey: ["health"],
-    queryFn: healthService.get,
-    refetchInterval: 30_000,
-  });
+  const { isConnected } = useWSStatus();
 
   const { data: eas } = useEffectiveAccountState();
   const { data: positions } = usePositions({ state: "OPEN" });
@@ -49,13 +45,11 @@ export function DashboardView() {
           {brokerMode && (
             <TradingModeBadge mode={brokerMode.mode as "LIVE" | "PAPER"} />
           )}
-          {health && (
-            <StatusIndicator
-              status={health.status === "ok" ? "healthy" : health.status as "degraded" | "unhealthy"}
-              label={`System ${health.status}`}
-              size="sm"
-            />
-          )}
+          <StatusIndicator
+            status={isConnected ? "healthy" : "unhealthy"}
+            label={isConnected ? "System Online" : "System Offline"}
+            size="sm"
+          />
         </div>
         {brokerStatus && (
           <span className="text-xs text-muted-foreground">

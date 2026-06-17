@@ -78,7 +78,7 @@ export function TopNav() {
           title={isConnected ? "WebSocket connected" : "WebSocket disconnected"}
         >
           {isConnected ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-          <span>{isConnected ? "Live" : "Offline"}</span>
+          <span>{isConnected ? "Online" : "Offline"}</span>
         </div>
 
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">

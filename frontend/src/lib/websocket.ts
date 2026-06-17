@@ -1,18 +1,19 @@
-import { WS_BASE_URL, WS_RECONNECT_DELAY, WS_MAX_RECONNECT_ATTEMPTS, TOKEN_KEY } from "./constants";
+import { WS_BASE_URL, WS_RECONNECT_DELAY, TOKEN_KEY } from "./constants";
 import { getAccessToken } from "./auth";
 import type { WSEventType, WSMessage } from "@/types";
 
 type EventHandler<T = unknown> = (msg: WSMessage<T>) => void;
+type StatusHandler = (connected: boolean) => void;
 
 class WebSocketManager {
   private ws: WebSocket | null = null;
   private handlers = new Map<WSEventType, Set<EventHandler>>();
-  private reconnectAttempts = 0;
+  private statusHandlers = new Set<StatusHandler>();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private shouldReconnect = true;
+  private stopped = false;
 
   connect() {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return;
 
     const token = typeof window !== "undefined" ? getAccessToken() : null;
     if (!token) return;
@@ -31,24 +32,47 @@ class WebSocketManager {
       }
     };
 
-    this.ws.onclose = () => {
-      if (!this.shouldReconnect) return;
-      if (this.reconnectAttempts < WS_MAX_RECONNECT_ATTEMPTS) {
-        this.reconnectAttempts++;
-        this.reconnectTimer = setTimeout(() => this.connect(), WS_RECONNECT_DELAY);
-      }
+    this.ws.onopen = () => {
+      this._notifyStatus(true);
     };
 
-    this.ws.onopen = () => {
-      this.reconnectAttempts = 0;
+    this.ws.onclose = () => {
+      this._notifyStatus(false);
+      if (this.stopped) return;
+      this.reconnectTimer = setTimeout(() => this.connect(), WS_RECONNECT_DELAY);
     };
   }
 
-  disconnect() {
-    this.shouldReconnect = false;
+  /** Hard reset — clears stop flag, drops existing socket, reconnects with fresh token. */
+  forceReconnect() {
+    this.stopped = false;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.ws?.close();
-    this.ws = null;
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this.connect();
+  }
+
+  disconnect() {
+    this.stopped = true;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this._notifyStatus(false);
+  }
+
+  onStatusChange(handler: StatusHandler) {
+    this.statusHandlers.add(handler);
+    return () => this.statusHandlers.delete(handler);
+  }
+
+  private _notifyStatus(connected: boolean) {
+    this.statusHandlers.forEach((h) => h(connected));
   }
 
   on<T>(event: WSEventType, handler: EventHandler<T>) {
