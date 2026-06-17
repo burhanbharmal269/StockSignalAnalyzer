@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { brokerService } from "@/services/broker.service";
 import { executionService } from "@/services/execution.service";
 import { StatusIndicator } from "@/components/shared/status-indicator";
@@ -18,6 +19,8 @@ const EXECUTION_MODES: ExecutionMode[] = ["MANUAL", "AUTOMATIC"];
 
 export function BrokerView() {
   const qc = useQueryClient();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [modeChangePending, setModeChangePending] = useState<ExecutionMode | null>(null);
 
   const { data: status, isLoading } = useQuery({
@@ -74,6 +77,35 @@ export function BrokerView() {
     },
     onError: () => toast.error("Failed to get login URL. Check KITE_API_KEY in .env."),
   });
+
+  // Auto-submit request_token when Zerodha redirects back to /broker?request_token=XXX
+  useEffect(() => {
+    const requestToken = searchParams.get("request_token");
+    const status = searchParams.get("status");
+    if (!requestToken) return;
+    if (status && status !== "success" && status !== "") {
+      toast.error(`Kite OAuth failed: ${status}`);
+      router.replace("/broker");
+      return;
+    }
+    toast.loading("Activating Kite session…", { id: "kite-auth" });
+    brokerService
+      .submitCallback(requestToken)
+      .then(() => {
+        toast.success("Kite session activated", { id: "kite-auth" });
+        qc.invalidateQueries({ queryKey: ["broker-status"] });
+        qc.invalidateQueries({ queryKey: ["broker-session"] });
+        router.replace("/broker");
+      })
+      .catch((err: unknown) => {
+        const msg =
+          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+          "Authentication failed. Check request_token.";
+        toast.error(`Kite auth failed: ${msg}`, { id: "kite-auth" });
+        router.replace("/broker");
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const wsHandler = useCallback(
     (_event: WSEvent<BrokerStatus>) => {
