@@ -26,6 +26,24 @@ class BrokerStatusResponse(BaseModel):
     historical_data_status: str
 
 
+class KillSwitchStateResponse(BaseModel):
+    is_active: bool
+    activated_at: datetime | None
+    activated_by: str | None
+    activation_reason: str | None
+    deactivated_at: datetime | None
+    deactivated_by: str | None
+
+
+class KillSwitchActivateRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class KillSwitchDeactivateRequest(BaseModel):
+    note: str = Field(min_length=1, max_length=500)
+    override_loss_check: bool = False
+
+
 class TradingModeResponse(BaseModel):
     mode: str
 
