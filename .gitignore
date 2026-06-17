@@ -30,6 +30,9 @@ venv/
 env/
 ENV/
 
+# Limit lib/ ignore to Python build artifacts only (not frontend/src/lib)
+!/frontend/src/lib/
+
 # Poetry
 poetry.lock
 
