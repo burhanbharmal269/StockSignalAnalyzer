@@ -110,10 +110,9 @@ class PortfolioMonitorService:
                     limit_pct=max_dd,
                 )
             )
-            await self._ks_service.activate(
-                reason=f"Drawdown {account.drawdown_from_hwm_pct:.1f}% >= limit {max_dd:.1f}%",
-                activated_by="portfolio_monitor",
-                trigger_source="drawdown_limit",
+            _log.critical(
+                "portfolio_monitor.drawdown_limit_breached pct=%.1f limit=%.1f (auto-activation disabled)",
+                account.drawdown_from_hwm_pct, max_dd,
             )
 
         # Weekly loss
@@ -228,14 +227,9 @@ class PortfolioMonitorService:
                     limit_pct=self._config.daily_loss.limit_pct,
                 )
             )
-            ks_reason = (
-                f"Daily loss {daily_loss_pct:.1f}% >= kill switch threshold "
-                f"{cfg.kill_switch_at_pct:.1f}%"
-            )
-            await self._ks_service.activate(
-                reason=ks_reason,
-                activated_by="portfolio_monitor",
-                trigger_source="daily_loss_100pct",
+            _log.critical(
+                "portfolio_monitor.daily_loss_threshold_breached pct=%.1f threshold=%.1f (auto-activation disabled)",
+                daily_loss_pct, cfg.kill_switch_at_pct,
             )
 
         _log.warning(

@@ -8,21 +8,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class KillSwitchStateResponse(BaseModel):
-    is_active: bool
-    activated_at: datetime | None
-    activated_by: str | None
-    activation_reason: str | None
-    deactivated_at: datetime | None
-    deactivated_by: str | None
-
-
 class BrokerStatusResponse(BaseModel):
     broker_name: str
     status: str
     # Session connection state: CONNECTED | DISCONNECTED | AUTH_REQUIRED | SESSION_EXPIRED | ERROR
     session_status: str
-    kill_switch: KillSwitchStateResponse
     latency_ms: float
     details: dict
     checked_at: datetime
@@ -38,15 +28,6 @@ class BrokerStatusResponse(BaseModel):
 
 class TradingModeResponse(BaseModel):
     mode: str
-
-
-class KillSwitchActivateRequest(BaseModel):
-    reason: str = Field(min_length=1, max_length=500)
-
-
-class KillSwitchDeactivateRequest(BaseModel):
-    note: str = Field(min_length=1, max_length=500)
-    override_loss_check: bool = False
 
 
 class BrokerLoginUrlResponse(BaseModel):

@@ -62,19 +62,11 @@ class SessionExpiryWatcher:
         if session.is_expired():
             _log.critical(
                 "session_expiry_watcher.startup: kite session is EXPIRED (expires_at=%s) "
-                "— deactivating session and activating kill switch",
+                "— deactivating session, re-authentication required",
                 session.expires_at,
             )
             session.deactivate()
             await self._session_repo.save(session)
-            await self._kill_switch.activate(
-                reason=(
-                    f"Startup validation: Kite access token expired at {session.expires_at.isoformat()} "
-                    f"— re-authentication required via /broker/login"
-                ),
-                activated_by="system",
-                trigger_source="startup_session_validator",
-            )
         else:
             _log.info(
                 "session_expiry_watcher.startup: kite session valid for user=%s, expires_at=%s",
@@ -103,17 +95,9 @@ class SessionExpiryWatcher:
         if session.is_expired():
             _log.critical(
                 "session_expiry_watcher: kite session expired for user=%s at %s "
-                "— deactivating and activating kill switch",
+                "— deactivating, re-authentication required",
                 session.user_name or "unknown",
                 session.expires_at,
             )
             session.deactivate()
             await self._session_repo.save(session)
-            await self._kill_switch.activate(
-                reason=(
-                    "Kite access token expired at 06:00 IST — "
-                    "live trading disabled until re-authentication"
-                ),
-                activated_by="system",
-                trigger_source="session_expiry_watcher",
-            )

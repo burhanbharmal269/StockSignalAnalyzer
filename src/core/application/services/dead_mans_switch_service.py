@@ -73,11 +73,7 @@ class DeadMansSwitchService:
                     )
                     if self._redis_failures >= cfg.redis_failure_threshold:
                         reason = f"Redis unavailable for {self._redis_failures} consecutive checks"
-                        await self._ks_service.activate(
-                            reason=reason,
-                            activated_by="dead_mans_switch",
-                            trigger_source="redis_connectivity",
-                        )
+                        _log.critical("dead_mans_switch.redis_threshold_exceeded reason=%s (auto-activation disabled)", reason)
 
                 if db_ok:
                     self._db_failures = 0
@@ -90,11 +86,7 @@ class DeadMansSwitchService:
                     )
                     if self._db_failures >= cfg.db_failure_threshold:
                         reason = f"Database unavailable for {self._db_failures} consecutive checks"
-                        await self._ks_service.activate(
-                            reason=reason,
-                            activated_by="dead_mans_switch",
-                            trigger_source="db_connectivity",
-                        )
+                        _log.critical("dead_mans_switch.db_threshold_exceeded reason=%s (auto-activation disabled)", reason)
 
             except asyncio.CancelledError:
                 raise

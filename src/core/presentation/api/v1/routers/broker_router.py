@@ -1,12 +1,12 @@
-"""Broker router — status, trading mode, kill switch, and Kite OAuth login.
+"""Broker router — status, trading mode, and Kite OAuth login.
 
-GET  /api/v1/broker/status                    — broker health + kill switch state
+GET  /api/v1/broker/status                    — broker health
 GET  /api/v1/broker/mode                      — current trading mode (LIVE/PAPER)
 POST /api/v1/broker/mode                      — switch trading mode at runtime (admin only)
 GET  /api/v1/broker/session                   — active broker session info
 GET  /api/v1/broker/login                     — Kite OAuth login URL (live mode only)
 POST /api/v1/broker/callback                  — exchange Kite request_token for session
-POST /api/v1/broker/kill-switch/activate      — activate the kill switch
+POST /api/v1/broker/kill-switch/activate      — activate the kill switch (manual only)
 POST /api/v1/broker/kill-switch/deactivate    — deactivate the kill switch
 """
 
@@ -170,12 +170,6 @@ async def set_trading_mode(
     user: CurrentUser = Depends(require_admin),  # noqa: B008
     broker_config: BrokerConfig = Depends(Provide[ApplicationContainer.broker_config]),  # noqa: B008
     redis_client: Redis = Depends(Provide[ApplicationContainer.redis_client]),  # noqa: B008
-    kill_switch_service: KillSwitchService = Depends(  # noqa: B008
-        Provide[ApplicationContainer.kill_switch_service]
-    ),
-    kill_switch_repository: IKillSwitchRepository = Depends(  # noqa: B008
-        Provide[ApplicationContainer.kill_switch_repository]
-    ),
 ) -> TradingModeResponse:
     body = TradingModeSwitchRequest(**(await request.json()))
     new_mode = body.mode.lower()
@@ -185,16 +179,6 @@ async def set_trading_mode(
 
     if new_mode == current_mode:
         return TradingModeResponse(mode=new_mode.upper())
-
-    # Switching TO live: activate kill switch as safety measure until Kite session confirmed
-    if new_mode == "live":
-        ks_state = await kill_switch_repository.get_state()
-        if not ks_state.is_active:
-            await kill_switch_service.activate(
-                reason=f"Mode switch to LIVE initiated by {user.username}. Reactivate Kite session before deactivating.",
-                activated_by="operator",
-                trigger_source="mode_switch",
-            )
 
     # Persist override
     await redis_client.set(_MODE_OVERRIDE_KEY, new_mode)

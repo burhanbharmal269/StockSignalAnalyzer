@@ -154,16 +154,9 @@ class AutoKillSwitchService:
         return None
 
     async def _activate(self, reason: str, source: str) -> None:
-        log.critical(
-            "auto_kill_switch.activating",
-            extra={"reason": reason, "source": source},
+        # Auto-activation disabled — kill switch is operator-only.
+        log.warning(
+            "auto_kill_switch.suppressed reason=%s source=%s",
+            reason,
+            source,
         )
-        try:
-            await self._ks_service.activate(
-                reason=reason,
-                activated_by="auto_kill_switch",
-                trigger_source=source,
-            )
-            KILL_SWITCH_ACTIVATIONS_TOTAL.labels(source=source).inc()
-        except Exception:  # noqa: BLE001
-            log.exception("auto_kill_switch.activation_failed")

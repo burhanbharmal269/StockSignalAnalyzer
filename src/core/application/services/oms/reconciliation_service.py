@@ -270,12 +270,10 @@ class ReconciliationService:
                 )
 
         if result.rogue_orders:
-            await self._activate_kill_switch(
-                f"Rogue orders detected: {result.rogue_orders}"
-            )
+            _log.critical("reconciliation.rogue_orders_detected orders=%s (auto-activation disabled)", result.rogue_orders)
             raise RogueOrderDetectedError(
-                f"Kill switch activated: {len(result.rogue_orders)} rogue "
-                f"broker order(s): {result.rogue_orders}"
+                f"Rogue orders detected: {len(result.rogue_orders)} broker "
+                f"order(s) not in OMS: {result.rogue_orders}"
             )
 
     # ------------------------------------------------------------------
