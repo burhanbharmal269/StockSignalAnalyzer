@@ -5,7 +5,6 @@ POST /api/v1/opportunities/scan           — trigger full scanner run
 GET  /api/v1/opportunities/{id}           — single opportunity detail
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query

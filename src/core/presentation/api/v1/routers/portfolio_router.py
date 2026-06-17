@@ -9,12 +9,10 @@ Endpoints:
   POST   /api/v1/portfolios/{id}/deactivate — deactivate
 """
 
-from __future__ import annotations
-
 import uuid
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from container import ApplicationContainer
 from core.application.services.portfolio_service import PortfolioService
@@ -69,9 +67,10 @@ async def get_portfolio(
 @router.post("", response_model=PortfolioResponse, status_code=status.HTTP_201_CREATED)
 @inject
 async def create_portfolio(
-    body: CreatePortfolioRequest,
+    request: Request,
     service: PortfolioService = Depends(Provide[ApplicationContainer.portfolio_service]),  # noqa: B008
 ) -> PortfolioResponse:
+    body = CreatePortfolioRequest(**(await request.json()))
     try:
         portfolio = await service.create(
             name=body.name,

@@ -11,7 +11,6 @@ by any endpoint here — they run regardless of lock state or execution mode.
 All write operations are admin-only and create audit log entries.
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException

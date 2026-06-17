@@ -16,7 +16,6 @@ Redis Pub/Sub channels forwarded:
   ssa:kill_switch.activated, ssa:kill_switch.deactivated
 """
 
-from __future__ import annotations
 
 import asyncio
 import json

@@ -5,7 +5,6 @@ GET  /api/v1/orders/{order_id}   — fetch a single order
 POST /api/v1/orders/{order_id}/cancel — cancel an active order
 """
 
-from __future__ import annotations
 
 import uuid
 

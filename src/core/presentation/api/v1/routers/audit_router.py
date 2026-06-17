@@ -14,7 +14,6 @@ Query parameters:
   offset       — pagination offset
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID

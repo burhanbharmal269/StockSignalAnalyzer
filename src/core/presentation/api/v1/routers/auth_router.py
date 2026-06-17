@@ -51,7 +51,6 @@ logger = get_logger(__name__)
 @inject
 async def login(
     request: Request,
-    body: LoginRequest,
     jwt_service: JWTService = Depends(Provide[ApplicationContainer.jwt_service]),  # noqa: B008
     password_service: PasswordService = Depends(  # noqa: B008
         Provide[ApplicationContainer.password_service]
@@ -65,6 +64,7 @@ async def login(
     security_config: SecurityConfig = Depends(Provide[ApplicationContainer.security_config]),  # noqa: B008
 ) -> LoginResponse:
     """Authenticate with username + password and return JWT tokens."""
+    body = LoginRequest(**(await request.json()))
     client_ip = request.client.host if request.client else "unknown"
 
     if await rate_limiter.is_locked_out(client_ip):
@@ -134,7 +134,7 @@ async def logout(
 )
 @inject
 async def refresh_token(
-    body: RefreshRequest,
+    request: Request,
     jwt_service: JWTService = Depends(Provide[ApplicationContainer.jwt_service]),  # noqa: B008
     user_repository: IUserRepository = Depends(  # noqa: B008
         Provide[ApplicationContainer.user_repository]
@@ -142,6 +142,7 @@ async def refresh_token(
     security_config: SecurityConfig = Depends(Provide[ApplicationContainer.security_config]),  # noqa: B008
 ) -> RefreshResponse:
     """Verify the refresh token and issue a new access token."""
+    body = RefreshRequest(**(await request.json()))
     try:
         claims = jwt_service.decode_token(body.refresh_token)
     except TokenError as exc:
@@ -190,7 +191,7 @@ async def refresh_token(
 )
 @inject
 async def change_password(
-    body: ChangePasswordRequest,
+    request: Request,
     password_service: PasswordService = Depends(  # noqa: B008
         Provide[ApplicationContainer.password_service]
     ),
@@ -200,6 +201,7 @@ async def change_password(
     user: CurrentUser = Depends(get_current_user),  # noqa: B008
 ) -> MessageResponse:
     """Change the user's password and clear the force_change flag."""
+    body = ChangePasswordRequest(**(await request.json()))
     db_user = await user_repository.find_by_id(user.user_id)
     if db_user is None:
         raise HTTPException(

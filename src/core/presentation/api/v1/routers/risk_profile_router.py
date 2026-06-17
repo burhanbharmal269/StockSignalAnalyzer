@@ -10,12 +10,10 @@ Endpoints:
   POST   /api/v1/risk-profiles/{id}/deactivate — deactivate
 """
 
-from __future__ import annotations
-
 import uuid
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from container import ApplicationContainer
 from core.application.services.risk_profile_service import RiskProfileService
@@ -71,9 +69,10 @@ async def get_risk_profile(
 @router.post("", response_model=RiskProfileResponse, status_code=status.HTTP_201_CREATED)
 @inject
 async def create_risk_profile(
-    body: CreateRiskProfileRequest,
+    request: Request,
     service: RiskProfileService = Depends(Provide[ApplicationContainer.risk_profile_service]),  # noqa: B008
 ) -> RiskProfileResponse:
+    body = CreateRiskProfileRequest(**(await request.json()))
     try:
         profile = await service.create(
             name=body.name,
@@ -96,10 +95,11 @@ async def create_risk_profile(
 @router.patch("/{profile_id}", response_model=RiskProfileResponse)
 @inject
 async def update_risk_profile(
+    request: Request,
     profile_id: uuid.UUID,
-    body: UpdateRiskProfileRequest,
     service: RiskProfileService = Depends(Provide[ApplicationContainer.risk_profile_service]),  # noqa: B008
 ) -> RiskProfileResponse:
+    body = UpdateRiskProfileRequest(**(await request.json()))
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="No fields to update")

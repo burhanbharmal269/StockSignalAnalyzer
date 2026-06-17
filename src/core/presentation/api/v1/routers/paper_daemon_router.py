@@ -7,7 +7,6 @@ GET  /api/v1/paper/journal                — trade journal
 GET  /api/v1/paper/performance            — P&L summary
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query

@@ -10,10 +10,8 @@ POST /api/v1/broker/kill-switch/activate      — activate the kill switch
 POST /api/v1/broker/kill-switch/deactivate    — deactivate the kill switch
 """
 
-from __future__ import annotations
-
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
@@ -168,7 +166,7 @@ class TradingModeSwitchRequest(BaseModel):
 @router.post("/mode", response_model=TradingModeResponse, summary="Switch trading mode at runtime (admin only)")
 @inject
 async def set_trading_mode(
-    body: TradingModeSwitchRequest,
+    request: Request,
     user: CurrentUser = Depends(require_admin),  # noqa: B008
     broker_config: BrokerConfig = Depends(Provide[ApplicationContainer.broker_config]),  # noqa: B008
     redis_client: Redis = Depends(Provide[ApplicationContainer.redis_client]),  # noqa: B008
@@ -179,6 +177,7 @@ async def set_trading_mode(
         Provide[ApplicationContainer.kill_switch_repository]
     ),
 ) -> TradingModeResponse:
+    body = TradingModeSwitchRequest(**(await request.json()))
     new_mode = body.mode.lower()
     # Read current effective mode
     override = await redis_client.get(_MODE_OVERRIDE_KEY)
@@ -295,7 +294,7 @@ async def kite_callback_redirect(
 )
 @inject
 async def kite_callback(
-    body: KiteCallbackRequest,
+    request: Request,
     _user: CurrentUser = Depends(require_admin),  # noqa: B008
     broker_config: BrokerConfig = Depends(Provide[ApplicationContainer.broker_config]),  # noqa: B008
     session_manager: BrokerSessionManager = Depends(  # noqa: B008
@@ -303,6 +302,7 @@ async def kite_callback(
     ),
     redis_client: Redis = Depends(Provide[ApplicationContainer.redis_client]),  # noqa: B008
 ) -> BrokerSessionResponse:
+    body = KiteCallbackRequest(**(await request.json()))
     mode_override = await redis_client.get(_MODE_OVERRIDE_KEY)
     effective_mode = (mode_override.lower() if mode_override else broker_config.trading_mode.lower())
     if effective_mode != "live":
@@ -342,7 +342,7 @@ async def kite_callback(
 )
 @inject
 async def activate_kill_switch(
-    body: KillSwitchActivateRequest,
+    request: Request,
     user: CurrentUser = Depends(require_admin),  # noqa: B008
     kill_switch_service: KillSwitchService = Depends(  # noqa: B008
         Provide[ApplicationContainer.kill_switch_service]
@@ -351,6 +351,7 @@ async def activate_kill_switch(
         Provide[ApplicationContainer.kill_switch_repository]
     ),
 ) -> KillSwitchStateResponse:
+    body = KillSwitchActivateRequest(**(await request.json()))
     await kill_switch_service.activate(
         reason=body.reason,
         activated_by="operator",
@@ -374,7 +375,7 @@ async def activate_kill_switch(
 )
 @inject
 async def deactivate_kill_switch(
-    body: KillSwitchDeactivateRequest,
+    request: Request,
     user: CurrentUser = Depends(require_admin),  # noqa: B008
     kill_switch_service: KillSwitchService = Depends(  # noqa: B008
         Provide[ApplicationContainer.kill_switch_service]
@@ -383,6 +384,7 @@ async def deactivate_kill_switch(
         Provide[ApplicationContainer.kill_switch_repository]
     ),
 ) -> KillSwitchStateResponse:
+    body = KillSwitchDeactivateRequest(**(await request.json()))
     await kill_switch_service.deactivate(
         deactivated_by=user.username,
         note=body.note,

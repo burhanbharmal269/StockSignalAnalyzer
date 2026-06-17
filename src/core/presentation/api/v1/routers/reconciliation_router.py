@@ -6,7 +6,6 @@ GET  /api/v1/reconciliation/discrepancies    — query discrepancies across runs
 POST /api/v1/reconciliation/trigger          — manual reconciliation trigger
 """
 
-from __future__ import annotations
 
 import logging
 from datetime import datetime

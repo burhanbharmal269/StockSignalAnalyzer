@@ -6,12 +6,10 @@ POST /api/v1/signals/{signal_id}/approve — manually approve (RISK_PENDING → 
 POST /api/v1/signals/{signal_id}/reject  — manually reject  (RISK_PENDING → RISK_REJECTED)
 """
 
-from __future__ import annotations
-
 import uuid
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from container import ApplicationContainer
 from core.application.services.signal_scanner_service import SignalScannerService
@@ -131,13 +129,14 @@ async def approve_signal(
 )
 @inject
 async def reject_signal(
+    request: Request,
     signal_id: uuid.UUID,
-    body: RejectSignalRequest,
     _user: CurrentUser = Depends(require_no_force_change),  # noqa: B008
     signal_repository: ISignalRepository = Depends(  # noqa: B008
         Provide[ApplicationContainer.signal_repository]
     ),
 ) -> SignalResponse:
+    body = RejectSignalRequest(**(await request.json()))
     signal = await signal_repository.get_by_id(signal_id)
     if signal is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Signal not found.")

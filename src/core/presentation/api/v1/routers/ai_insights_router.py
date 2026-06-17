@@ -7,7 +7,6 @@ GET  /api/v1/ai/strategy/{symbol}         — strategy recommendation for symbol
 POST /api/v1/ai/news/analyze              — analyze specific news event
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query

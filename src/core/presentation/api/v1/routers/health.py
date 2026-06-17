@@ -5,7 +5,6 @@ GET /api/v1/health/live  — alias liveness probe (k8s standard)
 GET /api/v1/health/ready — readiness probe: checks Redis + DB connectivity
 """
 
-from __future__ import annotations
 
 import logging
 

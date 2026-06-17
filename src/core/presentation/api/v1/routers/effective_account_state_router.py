@@ -4,7 +4,6 @@ Endpoints:
   GET /api/v1/effective-account-state — resolve and return current effective state
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status

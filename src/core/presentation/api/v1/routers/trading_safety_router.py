@@ -8,10 +8,8 @@ POST /api/v1/trading-safety/unlock            — unlock trading (admin)
 POST /api/v1/trading-safety/initialize        — initialize ramp-up (admin)
 """
 
-from __future__ import annotations
-
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 
 from container import ApplicationContainer
@@ -124,12 +122,13 @@ async def check_promotion(
 @router.post("/promote", summary="Promote to next stage (admin)")
 @inject
 async def promote_stage(
-    body: PromoteRequest,
+    request: Request,
     _user: CurrentUser = Depends(require_admin),  # noqa: B008
     service: LiveTradingSafetyService = Depends(  # noqa: B008
         Provide[ApplicationContainer.live_trading_safety_service]
     ),
 ) -> dict:
+    body = PromoteRequest(**(await request.json()))
     try:
         state = await service.promote(
             body.win_rate, body.drawdown_pct,
@@ -147,12 +146,13 @@ async def promote_stage(
 @router.post("/lock", summary="Lock live trading (admin)")
 @inject
 async def lock_trading(
-    body: LockRequest,
+    request: Request,
     _user: CurrentUser = Depends(require_admin),  # noqa: B008
     service: LiveTradingSafetyService = Depends(  # noqa: B008
         Provide[ApplicationContainer.live_trading_safety_service]
     ),
 ) -> dict:
+    body = LockRequest(**(await request.json()))
     await service.lock(body.reason)
     return {"message": "Trading locked", "reason": body.reason}
 

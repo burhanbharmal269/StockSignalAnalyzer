@@ -6,7 +6,6 @@ GET  /api/v1/news/sentiment/{symbol}      — per-symbol sentiment
 POST /api/v1/news/refresh                 — trigger news aggregation
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query

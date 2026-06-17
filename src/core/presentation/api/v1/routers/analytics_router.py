@@ -7,7 +7,6 @@ GET /api/v1/paper-trading/reports/{type}/{label} — single period report
 POST /api/v1/paper-trading/snapshot       — trigger manual snapshot
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 

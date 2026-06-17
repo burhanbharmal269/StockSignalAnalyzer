@@ -8,7 +8,6 @@ GET  /api/v1/market/breadth/history       — breadth history
 POST /api/v1/market/fetch                 — trigger historical data fetch
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated

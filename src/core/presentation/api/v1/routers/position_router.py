@@ -5,12 +5,10 @@ GET  /api/v1/positions/{position_id}      — fetch a single position
 POST /api/v1/positions/{position_id}/close — manually close a position at given price
 """
 
-from __future__ import annotations
-
 import uuid
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from container import ApplicationContainer
 from core.domain.enums.position_state import PositionState
@@ -101,13 +99,14 @@ async def get_position(
 )
 @inject
 async def close_position(
+    request: Request,
     position_id: uuid.UUID,
-    body: ClosePositionRequest,
     _user: CurrentUser = Depends(require_no_force_change),  # noqa: B008
     position_repository: IPositionRepository = Depends(  # noqa: B008
         Provide[ApplicationContainer.position_repository]
     ),
 ) -> PositionResponse:
+    body = ClosePositionRequest(**(await request.json()))
     position = await position_repository.get_by_id(position_id)
     if position is None:
         raise HTTPException(

@@ -10,7 +10,6 @@ POST /api/v1/intelligence/outcomes/check          — trigger outcome check cycl
 Execution mode and lock state: use GET /api/v1/execution/status instead.
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query

@@ -6,7 +6,6 @@ GET  /api/v1/backtest/runs/{run_id}       — run details + metrics
 GET  /api/v1/backtest/runs/{run_id}/trades — trade list for a run
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 

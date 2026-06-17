@@ -8,7 +8,6 @@ Controllers are thin: validate input, call repository, return schema.
 No business logic lives here.
 """
 
-from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 

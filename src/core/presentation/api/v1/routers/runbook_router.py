@@ -4,7 +4,6 @@ GET /api/v1/runbooks           — list all runbooks
 GET /api/v1/runbooks/{run_id}  — fetch a specific runbook by ID (e.g. RB-001)
 """
 
-from __future__ import annotations
 
 import pathlib
 from typing import Any

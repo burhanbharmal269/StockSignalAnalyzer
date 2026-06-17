@@ -11,12 +11,10 @@ Endpoints:
   POST   /api/v1/capital-allocations/{id}/deactivate — deactivate
 """
 
-from __future__ import annotations
-
 import uuid
 
 from dependency_injector.wiring import Provide, inject
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from container import ApplicationContainer
 from core.application.services.capital_allocation_service import CapitalAllocationService
@@ -73,9 +71,10 @@ async def get_capital_allocation(
 @router.post("", response_model=CapitalAllocationResponse, status_code=status.HTTP_201_CREATED)
 @inject
 async def create_capital_allocation(
-    body: CreateCapitalAllocationRequest,
+    request: Request,
     service: CapitalAllocationService = Depends(Provide[ApplicationContainer.capital_allocation_service]),  # noqa: B008
 ) -> CapitalAllocationResponse:
+    body = CreateCapitalAllocationRequest(**(await request.json()))
     try:
         allocation = await service.create(
             name=body.name,
@@ -95,10 +94,11 @@ async def create_capital_allocation(
 @router.patch("/{allocation_id}/capital", response_model=CapitalAllocationResponse)
 @inject
 async def update_capital(
+    request: Request,
     allocation_id: uuid.UUID,
-    body: UpdateCapitalRequest,
     service: CapitalAllocationService = Depends(Provide[ApplicationContainer.capital_allocation_service]),  # noqa: B008
 ) -> CapitalAllocationResponse:
+    body = UpdateCapitalRequest(**(await request.json()))
     try:
         allocation = await service.update_capital(
             allocation_id=allocation_id,
@@ -115,10 +115,11 @@ async def update_capital(
 @router.patch("/{allocation_id}/mode", response_model=CapitalAllocationResponse)
 @inject
 async def update_mode(
+    request: Request,
     allocation_id: uuid.UUID,
-    body: UpdateModeRequest,
     service: CapitalAllocationService = Depends(Provide[ApplicationContainer.capital_allocation_service]),  # noqa: B008
 ) -> CapitalAllocationResponse:
+    body = UpdateModeRequest(**(await request.json()))
     try:
         allocation = await service.update_mode(
             allocation_id=allocation_id,

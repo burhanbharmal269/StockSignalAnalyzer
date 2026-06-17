@@ -5,7 +5,6 @@ GET  /api/v1/options/{underlying}/history  — PCR history
 POST /api/v1/options/{underlying}/refresh  — force refresh from provider
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, Query

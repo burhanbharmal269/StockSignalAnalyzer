@@ -12,7 +12,6 @@ Controllers are thin: validate input, call service, return schema.
 No business logic lives here.
 """
 
-from __future__ import annotations
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, status
