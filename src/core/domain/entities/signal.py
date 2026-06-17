@@ -65,6 +65,11 @@ class Signal:
     portfolio_id: uuid.UUID | None = field(default=None)
     capital_source_mode: CapitalSourceMode | None = field(default=None)
 
+    # Price levels — populated from signal_analytics join (display only)
+    entry_price: float | None = field(default=None)
+    stop_loss_price: float | None = field(default=None)
+    target_price: float | None = field(default=None)
+
     created_at: datetime = field(
         default_factory=lambda: datetime.now(UTC)
     )

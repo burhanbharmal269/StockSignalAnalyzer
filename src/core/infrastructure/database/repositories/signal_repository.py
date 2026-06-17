@@ -5,7 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.domain.entities.signal import Signal
@@ -83,6 +83,29 @@ def _to_domain(row: SignalOrm) -> Signal:
     return sig
 
 
+async def _attach_prices(session: AsyncSession, signals: list[Signal]) -> None:
+    """Bulk-fetch entry/sl/target from signal_analytics and attach to each Signal."""
+    if not signals:
+        return
+    ids = [str(s.signal_id) for s in signals]
+    result = await session.execute(
+        text("""
+            SELECT DISTINCT ON (signal_id) signal_id, entry_price, stop_loss_price, target_price
+            FROM signal_analytics
+            WHERE signal_id = ANY(:ids)
+            ORDER BY signal_id, id DESC
+        """),
+        {"ids": ids},
+    )
+    price_map = {row.signal_id: row for row in result.mappings().fetchall()}
+    for sig in signals:
+        row = price_map.get(str(sig.signal_id))
+        if row:
+            sig.entry_price = float(row["entry_price"]) if row["entry_price"] is not None else None
+            sig.stop_loss_price = float(row["stop_loss_price"]) if row["stop_loss_price"] is not None else None
+            sig.target_price = float(row["target_price"]) if row["target_price"] is not None else None
+
+
 class SqlAlchemySignalRepository(ISignalRepository):
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
@@ -110,14 +133,20 @@ class SqlAlchemySignalRepository(ISignalRepository):
     async def get_by_id(self, signal_id: UUID) -> Signal | None:
         async with self._session_factory() as session:
             row = await session.get(SignalOrm, signal_id)
-            return _to_domain(row) if row else None
+            if row is None:
+                return None
+            sig = _to_domain(row)
+            await _attach_prices(session, [sig])
+            return sig
 
     async def get_by_state(self, state: SignalState) -> list[Signal]:
         async with self._session_factory() as session:
             result = await session.execute(
                 select(SignalOrm).where(SignalOrm.state == state.value)
             )
-            return [_to_domain(r) for r in result.scalars()]
+            signals = [_to_domain(r) for r in result.scalars()]
+            await _attach_prices(session, signals)
+            return signals
 
     async def get_active(self) -> list[Signal]:
         terminal_values = [s.value for s in _TERMINAL_STATES]
@@ -125,4 +154,6 @@ class SqlAlchemySignalRepository(ISignalRepository):
             result = await session.execute(
                 select(SignalOrm).where(SignalOrm.state.notin_(terminal_values))
             )
-            return [_to_domain(r) for r in result.scalars()]
+            signals = [_to_domain(r) for r in result.scalars()]
+            await _attach_prices(session, signals)
+            return signals

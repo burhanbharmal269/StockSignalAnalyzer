@@ -58,6 +58,30 @@ export function SignalsView() {
       },
     },
     {
+      accessorKey: "entry_price",
+      header: "Entry",
+      cell: ({ row }) => {
+        const v = row.original.entry_price;
+        return <span className="tabular-nums">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
+      },
+    },
+    {
+      accessorKey: "stop_loss_price",
+      header: "SL",
+      cell: ({ row }) => {
+        const v = row.original.stop_loss_price;
+        return <span className="tabular-nums text-loss">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
+      },
+    },
+    {
+      accessorKey: "target_price",
+      header: "Target",
+      cell: ({ row }) => {
+        const v = row.original.target_price;
+        return <span className="tabular-nums text-profit">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
+      },
+    },
+    {
       accessorKey: "strategy_type",
       header: "Strategy",
     },

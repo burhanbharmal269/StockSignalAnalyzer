@@ -28,6 +28,9 @@ class SignalResponse(BaseModel):
     portfolio_id: str | None
     capital_source_mode: str | None
     created_at: datetime
+    entry_price: float | None
+    stop_loss_price: float | None
+    target_price: float | None
 
 
 class SignalListResponse(BaseModel):

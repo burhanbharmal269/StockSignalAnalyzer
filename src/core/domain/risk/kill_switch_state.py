@@ -15,7 +15,7 @@ from datetime import datetime
 from core.domain.exceptions.risk import RiskInvariantError
 
 _VALID_ACTIVATED_BY: frozenset[str] = frozenset(
-    {"operator", "risk_engine", "dead_mans_switch", "system"}
+    {"operator", "risk_engine", "dead_mans_switch", "system", "auto_kill_switch"}
 )
 
 

@@ -50,6 +50,9 @@ def _to_response(signal: object) -> SignalResponse:
         portfolio_id=str(signal.portfolio_id) if signal.portfolio_id else None,
         capital_source_mode=signal.capital_source_mode.value if signal.capital_source_mode else None,
         created_at=signal.created_at,
+        entry_price=signal.entry_price,
+        stop_loss_price=signal.stop_loss_price,
+        target_price=signal.target_price,
     )
 
 

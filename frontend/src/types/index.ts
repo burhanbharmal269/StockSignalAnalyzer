@@ -99,6 +99,9 @@ export interface Signal {
   portfolio_id: string | null;
   capital_source_mode: string | null;
   created_at: string;
+  entry_price: number | null;
+  stop_loss_price: number | null;
+  target_price: number | null;
 }
 
 export interface SignalListResponse {
