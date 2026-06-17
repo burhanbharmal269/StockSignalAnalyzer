@@ -68,8 +68,8 @@ weights:
 gates:
   min_score_to_execute: 70
   min_confidence_to_execute: 65
-  data_completeness_min_pct: 75.0
-  direction_conviction_min: 0.45
+  data_completeness_min_pct: 75.0   # requires 6 of 7 components — OI and IV now derived from candles
+  direction_conviction_min: 0.45    # majority vote: winning direction must hold 45%+ of available weight
 
 # ---------------------------------------------------------------------------
 # Component 1 — OI Build-up (max 25 pts)

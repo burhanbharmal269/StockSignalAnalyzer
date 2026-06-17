@@ -36,6 +36,23 @@ _MAX_DAYS = {
     "15minute": 200, "30minute": 200, "60minute": 400, "day": 2000,
 }
 
+# NSE index tradingsymbol map — canonical underlying names used in F&O to Kite instrument keys.
+# Kite exposes indices under NSE with their full official name, NOT the underlying abbreviation.
+_INDEX_KEY_MAP: dict[str, str] = {
+    "NIFTY":      "NSE:NIFTY 50",
+    "BANKNIFTY":  "NSE:NIFTY BANK",
+    "FINNIFTY":   "NSE:NIFTY FIN SERVICE",
+    "MIDCPNIFTY": "NSE:NIFTY MID SELECT",
+    "SENSEX":     "BSE:SENSEX",
+    "BANKEX":     "BSE:BANKEX",
+    "INDIA VIX":  "NSE:INDIA VIX",   # Kite key for India VIX index
+}
+
+
+def _to_nse_key(symbol: str) -> str:
+    """Convert an underlying symbol name to its Kite exchange:tradingsymbol key."""
+    return _INDEX_KEY_MAP.get(symbol.upper(), f"NSE:{symbol}")
+
 
 class KiteMarketDataProvider(IMarketDataProvider):
     """Primary market data provider using Kite Connect API."""
@@ -135,14 +152,24 @@ class KiteMarketDataProvider(IMarketDataProvider):
         return all_candles
 
     async def get_ltp(self, symbols: list[str]) -> dict[str, Decimal]:
+        """Fetch last traded price for a list of symbols.
+
+        Handles both equity/index underlyings (NSE exchange) and F&O instruments.
+        Index underlyings like NIFTY, BANKNIFTY, FINNIFTY are mapped to their
+        correct Kite instrument key (e.g. 'NIFTY' → 'NSE:NIFTY 50').
+        """
         await self._ensure_authenticated()
         loop = asyncio.get_event_loop()
         kite = self._get_kite()
-        nse_syms = [f"NSE:{s}" for s in symbols]
+
+        # Map canonical underlying names to Kite exchange:tradingsymbol keys.
+        # Indices on NSE use their full names; equities use plain tradingsymbol.
+        kite_keys = [_to_nse_key(s) for s in symbols]
+        reverse: dict[str, str] = {kite_keys[i]: symbols[i] for i in range(len(symbols))}
         try:
-            data: dict = await loop.run_in_executor(None, lambda: kite.ltp(nse_syms))
+            data: dict = await loop.run_in_executor(None, lambda: kite.ltp(kite_keys))
             return {
-                k.replace("NSE:", ""): Decimal(str(v["last_price"]))
+                reverse.get(k, k.split(":")[-1]): Decimal(str(v["last_price"]))
                 for k, v in data.items()
             }
         except Exception as exc:
@@ -174,15 +201,28 @@ class KiteMarketDataProvider(IMarketDataProvider):
             return []
 
         syms = [f"NFO:{i['tradingsymbol']}" for i in chain]
+
+        # Must use quote() not ltp() — ltp() only returns last_price.
+        # quote() returns oi, oi_day_high, oi_day_low, volume, and last_price.
+        # Kite quote() limit: 500 instruments per call — batch if needed.
+        quote_data: dict = {}
         try:
-            ltp_data: dict = await loop.run_in_executor(None, lambda: kite.ltp(syms))
-        except Exception:
-            ltp_data = {}
+            for batch_start in range(0, len(syms), 500):
+                batch = syms[batch_start : batch_start + 500]
+                chunk: dict = await loop.run_in_executor(None, lambda b=batch: kite.quote(b))
+                quote_data.update(chunk)
+        except Exception as exc:
+            _log.warning("kite.quote (option chain) failed: %s", exc)
 
         entries = []
         for inst in chain:
             key = f"NFO:{inst['tradingsymbol']}"
-            quote = ltp_data.get(key, {})
+            quote = quote_data.get(key, {})
+            oi = int(quote.get("oi", 0))
+            oi_day_low = int(quote.get("oi_day_low", 0))
+            # Kite has no direct oi_day_change field — approximate intraday OI change
+            # as (current OI - morning OI low) which reflects net buildup since open.
+            change_in_oi = max(0, oi - oi_day_low) if oi_day_low > 0 else 0
             entries.append(OptionChainEntry(
                 symbol=inst["name"],
                 exchange="NFO",
@@ -190,8 +230,8 @@ class KiteMarketDataProvider(IMarketDataProvider):
                 strike=Decimal(str(inst["strike"])),
                 option_type=inst["instrument_type"],
                 last_price=Decimal(str(quote.get("last_price", 0))),
-                open_interest=int(quote.get("oi", 0)),
-                change_in_oi=int(quote.get("oi_day_change", 0)),
+                open_interest=oi,
+                change_in_oi=change_in_oi,
                 volume=int(quote.get("volume", 0)),
                 instrument_token=int(inst["instrument_token"]),
             ))
@@ -228,6 +268,18 @@ class KiteMarketDataProvider(IMarketDataProvider):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    async def get_quote(self, symbols: list[str], exchange: str = "NSE") -> dict[str, dict]:
+        """Full quote (price + OI + volume + depth) for up to 500 instruments per call."""
+        await self._ensure_authenticated()
+        loop = asyncio.get_event_loop()
+        kite = self._get_kite()
+        keyed = [f"{exchange}:{s}" for s in symbols]
+        try:
+            return await loop.run_in_executor(None, lambda: kite.quote(keyed))
+        except Exception as exc:
+            _log.warning("kite.quote failed: %s", exc)
+            return {}
 
     async def _resolve_token(self, symbol: str) -> int:
         if symbol in self._token_map:

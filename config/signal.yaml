@@ -4,8 +4,8 @@ signal:
   market_close_time: "15:15:00"
   dedup_ttl_minutes: 30
   gate:
-    min_score: 20       # lowered: only VOLUME+VWAP available (no OI/IV) → max ~40
-    min_confidence: 25
+    min_score: 60       # production: 60/100 requires regime-aligned signal with volume + trend confirmation
+    min_confidence: 50  # production: 50% confidence floor — realistic for Indian F&O directional
 
   # Default execution mode — seeded into Redis at startup if key absent.
   # At runtime, use POST /api/v1/execution/mode to change without restart.

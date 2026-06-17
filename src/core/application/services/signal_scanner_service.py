@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.application.services.market_data.historical_data_service import HistoricalDataService
     from core.application.services.market_universe_service import MarketUniverseService
+    from core.application.services.option_chain_service import OptionChainService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
     from core.application.services.signal_engine_service import SignalEngineService
 
@@ -128,6 +129,64 @@ def _compute_features(candles) -> dict:
         # Supertrend approximation (sign of (close - VWAP))
         supertrend_direction = 1 if close > float(vwap) else -1
 
+        # OI change from consecutive candles — Kite includes OI in F&O historical data.
+        # oi_change_pct feeds the OI_BUILDUP scoring component (Component 1, weight 25).
+        curr_oi = getattr(candles[-1], "oi", 0) or 0
+        prev_oi = getattr(candles[-2], "oi", 0) or 0 if len(candles) >= 2 else 0
+        oi_change_pct: float | None = (
+            (curr_oi - prev_oi) / prev_oi * 100.0
+            if prev_oi > 0 else None
+        )
+
+        # IV percentile proxy — BB width percentile is a reliable volatility regime
+        # proxy: wide bands = high realised vol = typically high implied vol.
+        # Mapped linearly to 0-100 scale for IV_ANALYSIS component (Component 7, weight 5).
+        iv_percentile_proxy = float(bb_pct) * 100.0
+
+        # OBV (On-Balance Volume) trend — feeds VolumeComponent step 3 (+/-2 pts).
+        # Direction determined by whether OBV slope over last 10 bars is positive.
+        obv_series = ta.volume.OnBalanceVolumeIndicator(
+            df["close"], df["volume"]
+        ).on_balance_volume()
+        obv_trend: str | None = None
+        if len(obv_series.dropna()) >= 10:
+            obv_slope = obv_series.iloc[-1] - obv_series.iloc[-10]
+            if obv_slope > 0:
+                obv_trend = "UP"
+            elif obv_slope < 0:
+                obv_trend = "DOWN"
+            else:
+                obv_trend = "FLAT"
+
+        # VPOC (Volume Point of Control) — price level with highest cumulative volume.
+        # Feeds VolumeComponent step 5 (+1 pt when price is within 0.2% of VPOC).
+        vpoc_distance_pct: float | None = None
+        if df["volume"].sum() > 0:
+            # Bin closes into 50 price buckets and find the highest-volume bin
+            price_min, price_max = df["close"].min(), df["close"].max()
+            if price_max > price_min:
+                n_bins = 50
+                bin_width = (price_max - price_min) / n_bins
+                bins = ((df["close"] - price_min) / bin_width).astype(int).clip(0, n_bins - 1)
+                vol_by_bin = df.groupby(bins)["volume"].sum()
+                vpoc_bin = int(vol_by_bin.idxmax())
+                vpoc_price = price_min + (vpoc_bin + 0.5) * bin_width
+                vpoc_distance_pct = (close - vpoc_price) / vpoc_price * 100.0
+
+        # Historical Volatility (HV) — 30-bar annualised realized vol from log returns.
+        # HV/IV ratio feeds IVAnalysisComponent step 3:
+        #   HV > IV (ratio > 1.2) → options are cheap → buy vol
+        #   HV < IV (ratio < 0.8) → options are expensive → sell vol
+        hv_iv_ratio: float | None = None
+        if len(df) >= 30:
+            import math
+            log_returns = df["close"].pct_change().dropna()
+            hv_30 = float(log_returns.rolling(30).std().iloc[-1]) * math.sqrt(252 * 26)
+            # 252 trading days × 26 fifteen-min bars per day for annualised 15m HV
+            iv_proxy_decimal = iv_percentile_proxy / 100.0
+            if iv_proxy_decimal > 0.01:
+                hv_iv_ratio = hv_30 / iv_proxy_decimal
+
         return {
             "close": close,
             "adx": float(adx) if adx == adx else None,
@@ -144,6 +203,11 @@ def _compute_features(candles) -> dict:
             "price_change_pct": float(price_change_pct),
             "vwap_deviation_sigma": float(vwap_deviation_sigma),
             "supertrend_direction": supertrend_direction,
+            "oi_change_pct": oi_change_pct,
+            "iv_percentile_proxy": iv_percentile_proxy,
+            "obv_trend": obv_trend,
+            "vpoc_distance_pct": vpoc_distance_pct,
+            "hv_iv_ratio": hv_iv_ratio,
         }
     except Exception as exc:
         _log.debug("feature_compute error: %s", exc)
@@ -180,7 +244,7 @@ def _pick_strategy(regime):
     }.get(regime, StrategyType.DIRECTIONAL)
 
 
-def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regime, strategy, is_index: bool = False):
+def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regime, strategy, is_index: bool = False, option_chain_snap=None, max_pain: float | None = None, pcr: float | None = None, india_vix: float | None = None):
     """Build SignalRequest from features. Returns None if inputs are insufficient."""
     from core.domain.enums.asset_type import AssetType
     from core.domain.enums.instrument_class import InstrumentClass
@@ -219,6 +283,17 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         bb_width_percentile=f.get("bb_width_percentile"),
         vwap=f.get("vwap"),
         supertrend_direction=f.get("supertrend_direction"),
+        # IV percentile: BB proxy when no option chain data; overridden by real BS IV
+        # from OptionChainSnapshot.iv_percentile once the option chain poller has run.
+        iv_percentile=f.get("iv_percentile_proxy"),
+        # PCR from option chain DB snapshot — None when no snapshot available yet.
+        pcr=pcr,
+        # HV/IV ratio — feeds IVAnalysisComponent step 3 (cheap/expensive options).
+        # Computed from 30-bar annualised realized vol vs BB-width IV proxy.
+        hv_iv_ratio=f.get("hv_iv_ratio"),
+        # India VIX — fetched once per scan cycle from Kite (NSE:INDIA VIX).
+        # Feeds IVAnalysisComponent step 1 (VIX structural penalty on short vol).
+        india_vix=india_vix,
     )
 
     ctx = ScoreContext(
@@ -228,10 +303,20 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         features=snap,
         volume_ratio=f.get("volume_ratio"),
         rsi_14=f.get("rsi_14"),
+        # oi_change_pct from consecutive candle OI — Kite includes OI in F&O historical data.
+        oi_change_pct=f.get("oi_change_pct"),
         price_change_pct=f.get("price_change_pct"),
         vwap_deviation_sigma=f.get("vwap_deviation_sigma"),
         instrument_class=score_instrument_class,
         dte=dte,
+        # OBV trend from 10-bar OBV slope — feeds VolumeComponent step 3 (+/-2 pts).
+        obv_trend=f.get("obv_trend"),
+        # VPOC distance — feeds VolumeComponent step 5 (+1 pt at VPOC).
+        vpoc_distance_pct=f.get("vpoc_distance_pct"),
+        # Option chain from DB snapshot: PCR trend + OI walls + real IV/GEX when available.
+        option_chain=option_chain_snap,
+        # Max pain from OptionChainService strike OI calculation.
+        max_pain_price=max_pain,
     )
 
     # RiskRequest only accepts "FUTURE" or "OPTION" — not "STOCK_FUTURE"/"INDEX_FUTURE"
@@ -268,12 +353,17 @@ class SignalScannerService:
         historical_svc: "HistoricalDataService",
         signal_engine: "SignalEngineService",
         analytics_svc: "SignalAnalyticsService | None" = None,
+        option_chain_svc: "OptionChainService | None" = None,
     ) -> None:
-        self._universe  = universe_svc
-        self._history   = historical_svc
-        self._engine    = signal_engine
-        self._analytics = analytics_svc
-        self._running   = False
+        self._universe        = universe_svc
+        self._history         = historical_svc
+        self._engine          = signal_engine
+        self._analytics       = analytics_svc
+        self._option_chain    = option_chain_svc
+        self._running         = False
+        # Per-symbol PCR history (last two readings) for trend detection.
+        # Format: {symbol: [older_pcr, current_pcr]}
+        self._pcr_history: dict[str, list[float]] = {}
 
     # ------------------------------------------------------------------
     # Background loop
@@ -322,6 +412,11 @@ class SignalScannerService:
     # ------------------------------------------------------------------
 
     async def _scan_cycle(self) -> dict:
+        # ── Pre-cycle: India VIX (once per cycle, shared across all symbols) ──
+        india_vix: float | None = await self._fetch_india_vix()
+        if india_vix is not None:
+            _log.info("signal_scanner.india_vix vix=%.2f", india_vix)
+
         # ── TRACE 1: Universe load ────────────────────────────────────
         # get_active_symbols(fo_only=True) returns BOTH index futures (is_fo=True,
         # is_index=True) AND F&O stocks (is_fo=True, is_index=False)
@@ -358,7 +453,7 @@ class SignalScannerService:
         semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
         accepted = rejected = errors = 0
         results  = await asyncio.gather(
-            *[self._process_symbol_sem(sym, semaphore) for sym in candidates],
+            *[self._process_symbol_sem(sym, semaphore, india_vix) for sym in candidates],
             return_exceptions=True,
         )
         for res in results:
@@ -382,11 +477,11 @@ class SignalScannerService:
             "candidates": len(candidates),
         }
 
-    async def _process_symbol_sem(self, sym, semaphore: asyncio.Semaphore) -> str:
+    async def _process_symbol_sem(self, sym, semaphore: asyncio.Semaphore, india_vix: float | None = None) -> str:
         async with semaphore:
-            return await self._process_symbol(sym)
+            return await self._process_symbol(sym, india_vix=india_vix)
 
-    async def _process_symbol(self, sym) -> str:
+    async def _process_symbol(self, sym, india_vix: float | None = None) -> str:
         """Process one universe symbol through the full pipeline. Returns 'accepted'/'rejected'/'error'."""
         symbol   = sym.symbol
         sym_type = "INDEX" if sym.is_index else "STOCK"
@@ -412,7 +507,7 @@ class SignalScannerService:
         vwap_dev  = features.get("vwap_deviation_sigma", 0)
         _log.info(
             "signal_scanner.features symbol=%s adx=%.1f vol_ratio=%.2f rsi=%.1f "
-            "vwap_dev_sigma=%.2f ema20=%.2f bb_pct=%.2f",
+            "vwap_dev_sigma=%.2f ema20=%.2f bb_pct=%.2f obv=%s vpoc=%s hv_iv=%s",
             symbol,
             adx or 0,
             vol_ratio or 0,
@@ -420,6 +515,9 @@ class SignalScannerService:
             vwap_dev or 0,
             features.get("ema_20") or 0,
             features.get("bb_width_percentile") or 0,
+            features.get("obv_trend") or "N/A",
+            f"{features['vpoc_distance_pct']:.2f}%" if features.get("vpoc_distance_pct") is not None else "N/A",
+            f"{features['hv_iv_ratio']:.2f}" if features.get("hv_iv_ratio") is not None else "N/A",
         )
 
         # ── TRACE 4: Regime classification ────────────────────────────
@@ -430,11 +528,36 @@ class SignalScannerService:
             symbol, sym_type, regime, strategy,
         )
 
+        # ── TRACE 4b: Option chain from DB (PCR, max pain, OI walls) ─
+        close_price = features.get("close") or 0.0
+        oc_snap, max_pain, pcr_val = await self._fetch_option_chain_snapshot(symbol, close_price)
+        if oc_snap is not None:
+            _log.info(
+                "signal_scanner.option_chain symbol=%s pcr=%.2f max_pain=%.0f "
+                "ce_wall=%s pe_wall=%s pcr_trend=%s iv_pct=%s iv_skew=%s gex_positive=%s",
+                symbol,
+                pcr_val or 0,
+                max_pain or 0,
+                f"{oc_snap.nearest_call_wall_distance_pct:.1f}%" if oc_snap.nearest_call_wall_distance_pct else "N/A",
+                f"{oc_snap.nearest_put_wall_distance_pct:.1f}%" if oc_snap.nearest_put_wall_distance_pct else "N/A",
+                oc_snap.pcr_trend or "N/A",
+                f"{oc_snap.iv_percentile:.1f}" if oc_snap.iv_percentile is not None else "N/A",
+                f"{oc_snap.iv_skew:.4f}" if oc_snap.iv_skew is not None else "N/A",
+                oc_snap.gex_positive if oc_snap.gex_positive is not None else "N/A",
+            )
+
         # ── TRACE 5: Build SignalRequest ──────────────────────────────
         token    = sym.instrument_token or abs(hash(symbol)) % 1_000_000
         lot_size = sym.lot_size or 1
 
-        req = _build_signal_request(symbol, token, lot_size, features, regime, strategy, is_index=sym.is_index)
+        req = _build_signal_request(
+            symbol, token, lot_size, features, regime, strategy,
+            is_index=sym.is_index,
+            option_chain_snap=oc_snap,
+            max_pain=max_pain,
+            pcr=pcr_val,
+            india_vix=india_vix,
+        )
         if req is None:
             _log.debug(
                 "signal_scanner.skip symbol=%s reason=insufficient_features_for_request",
@@ -492,6 +615,122 @@ class SignalScannerService:
                 symbol, result.rejection_reason, result.adjusted_score or 0.0,
             )
             return "rejected"
+
+    async def _fetch_india_vix(self) -> float | None:
+        """Fetch India VIX from Kite (NSE:INDIA VIX).
+
+        India VIX feeds IVAnalysisComponent step 1 (VIX structural regime classification)
+        and step 4 (VIX > 20 → -2 pts penalty on short-vol signals).
+        Returns None if option chain service or provider is unavailable.
+        """
+        if self._option_chain is None:
+            return None
+        try:
+            provider = getattr(self._option_chain, "_primary", None)
+            if provider is None:
+                return None
+            ltp_map = await provider.get_ltp(["INDIA VIX"])
+            val = ltp_map.get("INDIA VIX")
+            if val is not None:
+                return float(val)
+        except Exception as exc:
+            _log.debug("india_vix fetch failed: %s", exc)
+        return None
+
+    async def _fetch_option_chain_snapshot(
+        self, symbol: str, close_price: float
+    ) -> "tuple[object | None, float | None, float | None]":
+        """Query the option_chain_snapshots table and build what we can from Kite data.
+
+        Returns (OptionChainSnapshot | None, max_pain | None, pcr | None).
+
+        What Kite provides via option chain:
+          ✓ PCR (put_OI / call_OI) — from aggregated strike OI
+          ✓ Max Pain — calculated from strike OI by OptionChainService
+          ✓ Nearest CE OI wall distance — highest-OI call strike above price
+          ✓ Nearest PE OI wall distance — highest-OI put strike below price
+          ✓ PCR trend — derived from consecutive snapshots (tracked in self._pcr_history)
+          ✗ IV / IV percentile — NOT from Kite; requires Black-Scholes (use BB proxy in FeatureSnapshot)
+          ✗ IV skew — NOT from Kite; requires IV per strike
+          ✗ GEX — NOT from Kite; requires delta/gamma from options model
+        """
+        if self._option_chain is None:
+            return None, None, None
+
+        try:
+            data = await self._option_chain.get_latest(symbol)
+        except Exception as exc:
+            _log.debug("option_chain.get_latest failed symbol=%s: %s", symbol, exc)
+            return None, None, None
+
+        if not data:
+            return None, None, None
+
+        from core.domain.value_objects.option_chain_snapshot import OptionChainSnapshot
+
+        pcr: float = data.get("pcr") or 0.0
+        max_pain: float = data.get("max_pain") or 0.0
+        entries: list[dict] = data.get("entries") or []
+
+        # PCR trend: RISING = more put OI building (bullish), FALLING = more call OI (bearish)
+        history = self._pcr_history.get(symbol, [])
+        if history:
+            prev_pcr = history[-1]
+            if pcr > prev_pcr * 1.02:
+                pcr_trend = "RISING"
+            elif pcr < prev_pcr * 0.98:
+                pcr_trend = "FALLING"
+            else:
+                pcr_trend = "STABLE"
+        else:
+            pcr_trend = "STABLE"
+        self._pcr_history[symbol] = [pcr]  # keep last one reading
+
+        # Nearest OI walls: highest-OI call strike above price → resistance
+        #                    highest-OI put strike below price  → support
+        call_wall_pct: float | None = None
+        put_wall_pct:  float | None = None
+
+        if close_price > 0 and entries:
+            # CE walls: strikes above current price, sorted by OI desc
+            ce_above = [
+                e for e in entries
+                if e.get("option_type") == "CE"
+                and (e.get("strike") or 0) > close_price
+                and (e.get("oi") or 0) > 0
+            ]
+            if ce_above:
+                top_ce = max(ce_above, key=lambda e: e.get("oi") or 0)
+                call_wall_pct = ((top_ce["strike"] - close_price) / close_price) * 100.0
+
+            # PE walls: strikes below current price, sorted by OI desc
+            pe_below = [
+                e for e in entries
+                if e.get("option_type") == "PE"
+                and (e.get("strike") or 0) < close_price
+                and (e.get("oi") or 0) > 0
+            ]
+            if pe_below:
+                top_pe = max(pe_below, key=lambda e: e.get("oi") or 0)
+                put_wall_pct = ((close_price - top_pe["strike"]) / close_price) * 100.0
+
+        # IV data from OptionChainService (Black-Scholes computed at fetch_and_store time)
+        # iv_percentile is a rolling percentile vs last 252 trading days (None until 5+ days of data)
+        iv_percentile: float | None = data.get("iv_percentile")
+        iv_skew: float | None = data.get("iv_skew")
+        gex_positive: bool | None = data.get("gex_positive")  # True = price-suppressing regime
+        gex_strike: float | None = None  # not yet surfaced by get_latest(); available in analysis dict
+
+        snap = OptionChainSnapshot(
+            iv_percentile=iv_percentile,
+            iv_skew=iv_skew,
+            gex_positive=gex_positive,
+            gex_strike=gex_strike,
+            nearest_call_wall_distance_pct=call_wall_pct,
+            nearest_put_wall_distance_pct=put_wall_pct,
+            pcr_trend=pcr_trend if history else None,
+        )
+        return snap, (max_pain or None), (pcr or None)
 
     def stop(self) -> None:
         self._running = False

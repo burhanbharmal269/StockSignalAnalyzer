@@ -1257,14 +1257,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         session_factory=db_session_factory,
     )
 
-    signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(
-        SignalScannerService,
-        universe_svc=market_universe_service,
-        historical_svc=historical_data_service,
-        signal_engine=signal_engine_service,
-        analytics_svc=signal_analytics_service,
-    )
-
     daily_universe_builder_service = providers.Singleton(
         __import__(
             "core.application.services.daily_universe_builder_service",
@@ -1282,6 +1274,15 @@ class ApplicationContainer(containers.DeclarativeContainer):
         primary_provider=kite_market_data_provider,
         fallback_provider=nse_fallback_provider,
         session_factory=db_session_factory,
+    )
+
+    signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(
+        SignalScannerService,
+        universe_svc=market_universe_service,
+        historical_svc=historical_data_service,
+        signal_engine=signal_engine_service,
+        analytics_svc=signal_analytics_service,
+        option_chain_svc=option_chain_service,
     )
 
     news_aggregation_service = providers.Singleton(

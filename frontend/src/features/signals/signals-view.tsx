@@ -24,7 +24,8 @@ const STATE_COLOR: Record<string, string> = {
   CANCELLED: "text-muted-foreground",
 };
 
-const PENDING_STATES = new Set(["RISK_PENDING", "PENDING", "SCORING", "SCORED"]);
+// Only RISK_PENDING signals can be manually approved/rejected (backend enforces this)
+const MANUAL_ACTION_STATES = new Set(["RISK_PENDING"]);
 
 export function SignalsView() {
   useSignalLiveUpdates();
@@ -50,11 +51,20 @@ export function SignalsView() {
       ),
     },
     {
+      accessorKey: "adjusted_score",
+      header: "Score",
+      cell: ({ row }) => {
+        const s = row.original.adjusted_score;
+        return <span className="tabular-nums">{s != null ? s.toFixed(1) : "—"}</span>;
+      },
+    },
+    {
       accessorKey: "confidence",
       header: "Confidence",
       cell: ({ row }) => {
         const c = row.original.confidence;
-        return <span className="tabular-nums">{c != null ? `${(c * 100).toFixed(0)}%` : "—"}</span>;
+        // Backend sends confidence as 0-100 (not 0-1)
+        return <span className="tabular-nums">{c != null ? `${c.toFixed(0)}%` : "—"}</span>;
       },
     },
     {
@@ -107,7 +117,7 @@ export function SignalsView() {
       header: "",
       cell: ({ row }) => {
         const sig = row.original;
-        if (!PENDING_STATES.has(sig.state)) return null;
+        if (!MANUAL_ACTION_STATES.has(sig.state)) return null;
         return (
           <div className="flex gap-1">
             <button

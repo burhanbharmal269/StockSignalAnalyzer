@@ -41,8 +41,8 @@ total_max_score: 100
 
 # Execution gate — enforced by Risk Engine, not Scoring Engine
 execution_gate:
-  min_score: 20       # lowered from 35: only VOLUME+VWAP available (no OI/IV)
-  min_confidence: 25  # lowered from 65: no historical performance data in paper mode
+  min_score: 60       # production: achievable with 6/7 components and aligned regime
+  min_confidence: 50  # production: realistic for F&O directional (52-58% win rate)
 
 # Signal classification thresholds (Phase 14 Signal Engine only — not used by Scoring Engine)
 thresholds:
@@ -74,7 +74,7 @@ data_freshness:
 
 # Data quality gates
 data_quality:
-  data_completeness_min_pct: 40       # available_components / 7 × 100 must meet this (lowered: OI/IV data not yet available)
+  data_completeness_min_pct: 75       # 6 of 7 components must have data (OI from candles, IV from BB proxy)
   score_quality_high_min_conviction: 0.60
   score_quality_medium_min_conviction: 0.50
   score_quality_high_min_completeness_pct: 100.0
