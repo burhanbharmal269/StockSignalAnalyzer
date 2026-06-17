@@ -20,7 +20,9 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     wsManager.connect();
     const interval = setInterval(() => {
       setIsConnected(wsManager.isConnected);
-    }, 2_000);
+      // Reconnect if disconnected (token may have been refreshed)
+      if (!wsManager.isConnected) wsManager.connect();
+    }, 5_000);
 
     return () => {
       clearInterval(interval);

@@ -286,13 +286,13 @@ class BacktestService:
     async def list_runs(self, limit: int = 20) -> list[dict]:
         async with self._sf() as db:
             result = await db.execute(text("""
-                SELECT r.run_id, r.strategy_name, r.symbol, r.timeframe,
-                       r.from_dt, r.to_dt, r.initial_capital, r.final_capital, r.status,
-                       m.win_rate, m.total_pnl, m.return_pct, m.max_drawdown_pct,
+                SELECT r.run_id, r.strategy_name, r.symbols, r.timeframe,
+                       r.start_date, r.end_date, r.status, r.created_at, r.completed_at,
+                       m.win_rate, m.total_pnl, m.max_drawdown_pct,
                        m.profit_factor, m.total_trades
                 FROM backtest_runs r
                 LEFT JOIN backtest_metrics m ON r.run_id = m.run_id
-                ORDER BY r.started_at DESC
+                ORDER BY r.created_at DESC
                 LIMIT :lim
             """), {"lim": limit})
             return [dict(r) for r in result.mappings().fetchall()]

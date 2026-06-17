@@ -258,7 +258,7 @@ class PaperTradingDaemon:
         async with self._sf() as db:
             result = await db.execute(text("""
                 SELECT * FROM paper_trade_journal
-                ORDER BY ts DESC LIMIT :lim
+                ORDER BY signal_at DESC LIMIT :lim
             """), {"lim": limit})
             return [dict(r) for r in result.mappings().fetchall()]
 
@@ -266,12 +266,10 @@ class PaperTradingDaemon:
         async with self._sf() as db:
             result = await db.execute(text("""
                 SELECT
-                    COUNT(*) FILTER (WHERE action='CLOSE') as total_trades,
-                    SUM(pnl) FILTER (WHERE action='CLOSE') as total_pnl,
-                    COUNT(*) FILTER (WHERE action='CLOSE' AND pnl > 0) as wins,
-                    COUNT(*) FILTER (WHERE action='CLOSE' AND pnl <= 0) as losses,
-                    MAX(capital_after) as peak_capital,
-                    MIN(capital_after) as trough_capital
+                    COUNT(*) FILTER (WHERE status='CLOSED') as total_trades,
+                    SUM(pnl) FILTER (WHERE status='CLOSED') as total_pnl,
+                    COUNT(*) FILTER (WHERE status='CLOSED' AND pnl > 0) as wins,
+                    COUNT(*) FILTER (WHERE status='CLOSED' AND pnl <= 0) as losses
                 FROM paper_trade_journal
             """))
             row = result.fetchone()
