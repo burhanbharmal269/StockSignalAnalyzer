@@ -1,12 +1,13 @@
 "use client";
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { brokerService } from "@/services/broker.service";
 import { executionService } from "@/services/execution.service";
 import { StatusIndicator } from "@/components/shared/status-indicator";
 import { formatDateTime } from "@/lib/utils";
+import { extractErrorMessage } from "@/lib/api-client";
 import { toast } from "sonner";
 import {
   Activity, AlertTriangle, ExternalLink, Lock, LogIn, Server, ShieldAlert, Unlock, User,
@@ -22,6 +23,7 @@ export function BrokerView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [modeChangePending, setModeChangePending] = useState<ExecutionMode | null>(null);
+  const callbackSubmitted = useRef(false);
 
   const { data: status, isLoading } = useQuery({
     queryKey: ["broker-status"],
@@ -75,33 +77,43 @@ export function BrokerView() {
     onSuccess: (data) => {
       window.location.href = data.login_url;
     },
-    onError: () => toast.error("Failed to get login URL. Check KITE_API_KEY in .env."),
+    onError: (err) => toast.error(extractErrorMessage(err, "Failed to get login URL. Check KITE_API_KEY in .env."), { duration: 8000 }),
   });
 
   // Auto-submit request_token when Zerodha redirects back to /broker?request_token=XXX
   useEffect(() => {
     const requestToken = searchParams.get("request_token");
-    const status = searchParams.get("status");
+    const oauthStatus = searchParams.get("status");
+
     if (!requestToken) return;
-    if (status && status !== "success" && status !== "") {
-      toast.error(`Kite OAuth failed: ${status}`);
+    // Guard: React StrictMode / HMR can fire this twice; request_tokens are single-use
+    if (callbackSubmitted.current) return;
+    callbackSubmitted.current = true;
+
+    if (oauthStatus && oauthStatus !== "success" && oauthStatus !== "") {
+      toast.error(`Kite OAuth failed: ${oauthStatus}`, { duration: 8000 });
       router.replace("/broker");
       return;
     }
+
+    if (!requestToken.trim()) {
+      toast.error("Empty request_token received from Kite redirect.", { duration: 8000 });
+      router.replace("/broker");
+      return;
+    }
+
     toast.loading("Activating Kite session…", { id: "kite-auth" });
     brokerService
-      .submitCallback(requestToken)
+      .submitCallback(requestToken.trim())
       .then(() => {
-        toast.success("Kite session activated", { id: "kite-auth" });
+        toast.success("Kite session activated successfully", { id: "kite-auth", duration: 5000 });
         qc.invalidateQueries({ queryKey: ["broker-status"] });
         qc.invalidateQueries({ queryKey: ["broker-session"] });
         router.replace("/broker");
       })
       .catch((err: unknown) => {
-        const msg =
-          (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-          "Authentication failed. Check request_token.";
-        toast.error(`Kite auth failed: ${msg}`, { id: "kite-auth" });
+        const msg = extractErrorMessage(err, "Kite authentication failed. Try reconnecting.");
+        toast.error(msg, { id: "kite-auth", duration: 10000 });
         router.replace("/broker");
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,8 +317,8 @@ export function BrokerView() {
                 refetchSession();
                 qc.invalidateQueries({ queryKey: ["broker-status"] });
               } catch (err: unknown) {
-                const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Check the request_token.";
-                toast.error(`Kite auth failed: ${msg}`);
+                const msg = extractErrorMessage(err, "Kite authentication failed. Check the request_token.");
+                toast.error(msg, { duration: 10000 });
               }
             }} />
           </div>
