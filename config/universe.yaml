@@ -1,0 +1,46 @@
+version: "1.0"
+
+universe:
+  enabled: true
+  evaluation_interval_seconds: 300      # re-evaluate every 5 minutes during market hours
+  max_candidates: 20
+  stale_universe_max_age_seconds: 660   # fallback: use previous cycle if age <= 11 min
+
+  eligibility:
+    allowed_instrument_classes:
+      - "OPTION"
+      - "FUTURE"
+    max_dte_days: 30
+    exclude_banned: true
+
+  liquidity:
+    min_liquidity_crores: 50.0          # 5-day average traded value in INR crore
+    min_active_strikes: 5               # strikes with non-zero OI within 10% of spot
+
+  volume:
+    min_volume_ratio: 0.5               # today / 20d avg; below this = excluded
+    weight: 0.30                        # composite score weight (must sum to 1.0 with others)
+
+  oi:
+    min_oi_lots: 500                    # minimum near-ATM OI in lots
+    atm_oi_band_pct: 10.0              # strikes within 10% of spot count as near-ATM
+    weight: 0.30
+
+  spread:
+    max_spread_pct: 0.50               # maximum bid-ask spread as % of mid
+    weight: 0.20
+
+  iv:
+    min_iv_pct: 10.0                   # minimum IV% (annualised)
+    max_iv_pct: 80.0                   # maximum IV% (annualised)
+    min_ivr: 20.0                      # minimum IV rank (0-100)
+    max_ivr: 90.0                      # maximum IV rank (0-100)
+
+  atr:
+    min_atr_pct: 0.30                  # ATR-14 as % of spot — minimum movement potential
+    max_atr_pct: 5.00                  # ATR-14 as % of spot — maximum (cap extreme movers)
+    weight: 0.20
+
+  diversification:
+    enabled: true
+    max_per_sector: 3                  # no sector may occupy more than this many slots

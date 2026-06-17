@@ -1,0 +1,45 @@
+# Risk Profile configuration — loaded on first-run seed.
+# Only MODERATE is seeded and activated by default.
+# Operators can add additional profiles via API.
+
+default_active: moderate
+
+profiles:
+  conservative:
+    name: Conservative
+    profile_type: CONSERVATIVE
+    universe_scope: ALL_FNO
+    risk_per_trade_pct: "1.0"
+    max_open_positions: 3
+    daily_loss_pct: "2.0"
+    weekly_loss_pct: "5.0"
+    drawdown_pct: "8.0"
+    max_position_size_pct: "10.0"
+    min_position_size_lots: 1
+    description: "Conservative: tight limits, small position sizes."
+
+  moderate:
+    name: Moderate
+    profile_type: MODERATE
+    universe_scope: ALL_FNO
+    risk_per_trade_pct: "2.0"
+    max_open_positions: 5
+    daily_loss_pct: "3.0"
+    weekly_loss_pct: "8.0"
+    drawdown_pct: "12.0"
+    max_position_size_pct: "20.0"
+    min_position_size_lots: 1
+    description: "Moderate: balanced defaults (system default)."
+
+  aggressive:
+    name: Aggressive
+    profile_type: AGGRESSIVE
+    universe_scope: ALL_FNO
+    risk_per_trade_pct: "3.0"
+    max_open_positions: 10
+    daily_loss_pct: "5.0"
+    weekly_loss_pct: "12.0"
+    drawdown_pct: "18.0"
+    max_position_size_pct: "30.0"
+    min_position_size_lots: 1
+    description: "Aggressive: wider limits, larger position sizes."

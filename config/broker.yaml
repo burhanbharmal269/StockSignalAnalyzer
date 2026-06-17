@@ -1,0 +1,52 @@
+# Broker Execution Layer configuration
+# Reference: docs/08_DEVELOPMENT_ROADMAP.md Phase 16
+# All secrets (api_key, api_secret, access_token) come from ISecretsClient — never here.
+
+broker:
+  # Active trading mode: "paper" | "live"
+  trading_mode: paper
+
+  # Active broker adapter: "paper" | "kite" | "groww" | "angel" | "upstox"
+  active_broker: paper
+
+  # Paper broker initial capital (INR) for margin simulation
+  paper_initial_capital: 1000000
+
+  # Session management
+  session:
+    # Kite token expires daily at 06:00 IST
+    kite_session_expiry_hour_ist: 6
+    # Secret name for the AES-256-GCM key used by TokenEncryptor
+    token_key_secret_name: broker_token_encryption_key
+    # Auto-refresh session N minutes before expiry
+    refresh_before_expiry_minutes: 30
+
+  # Health check settings
+  health:
+    # Interval between probes (seconds)
+    probe_interval_seconds: 60
+    # Timeout for each probe (seconds)
+    probe_timeout_seconds: 5
+    # Number of consecutive failures before marking DOWN
+    failure_threshold: 3
+
+  # Execution guard settings
+  execution_guard:
+    # Enforce IST market hours (09:15–15:30) — set false for paper/testing
+    enforce_market_hours: false
+    # Maximum orders per minute (matches oms.yaml)
+    max_orders_per_minute: 10
+
+  # Reconciliation settings
+  reconciliation:
+    # Seconds between reconciliation passes
+    schedule_interval_seconds: 60
+    # Price tolerance for avg_price mismatch (0.5%)
+    avg_price_mismatch_threshold: 0.005
+
+  # Execution monitor polling
+  execution_monitor:
+    # Poll interval for SUBMITTED/OPEN orders (seconds)
+    poll_interval_seconds: 5
+    # Max polls before considering an order stale
+    max_poll_count: 720  # 720 × 5s = 60 minutes

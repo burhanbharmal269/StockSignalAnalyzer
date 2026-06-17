@@ -1,0 +1,118 @@
+# Portfolio Risk Limits — Phase 13 Authoritative Schema v2.0
+# Source of truth: docs/17_PORTFOLIO_RISK_ENGINE.md + PHASE_13_REMEDIATION_PLAN.md Section 3
+#
+# All limits are configuration, not code.
+# Changing a limit requires no deployment — only config reload and restart.
+# The operator MUST set correct values for their capital base before Phase 14.
+
+version: "2.0"
+
+capital:
+  total_capital: 500000          # INR — set to actual trading capital before Phase 14
+  risk_per_trade_pct: 1.0        # 1% of capital risked per trade (renamed from capital_at_risk_pct)
+
+daily_loss:
+  limit_pct: 2.0                 # 2% of capital = daily stop (INR 10,000 on 500K capital)
+  limit_abs: 10000               # INR; whichever triggers first (pct or abs)
+  graduated_response:
+    reduce_size_at_pct: 50       # at 50% of daily limit consumed → halve new position sizes
+    paper_mode_at_pct: 75        # at 75% → paper trading mode (position_size_multiplier = 0.0)
+    kill_switch_at_pct: 100      # at 100% → kill switch activation
+
+weekly_loss:
+  limit_pct: 5.0                 # rolling 5 trading days (not calendar week)
+  limit_abs: 25000               # INR; whichever triggers first
+
+monthly_loss:
+  limit_pct: 10.0                # rolling 21 trading days
+  limit_abs: 50000               # INR; whichever triggers first
+
+volatility_block:
+  vix_threshold: 25.0            # India VIX above 25 → block new positions
+  enabled: true
+
+drawdown:
+  max_drawdown_pct: 10.0         # from rolling 30-day high-water mark
+
+position_limits:
+  max_open_positions: 10                # increased from 5 → 10 (aligns with Doc 17)
+  max_positions_per_underlying: 3       # one underlying (e.g. NIFTY) can have CE + PE + hedge
+  max_capital_per_underlying_pct: 20.0  # renamed from max_capital_per_symbol_pct
+  max_capital_per_sector_pct: 40.0      # sector concentration limit
+  max_notional_per_trade_pct: 10        # single trade notional cap as % of total_capital
+
+order_rate:
+  max_orders_per_minute: 5        # decreased from 10 → 5 (aligns with Doc 17)
+  max_orders_per_day: 50          # daily order count hard cap
+
+greeks:
+  # Unit convention: all Greek limits at portfolio level, in INR per unit of underlying move.
+  #
+  # Net delta formula:
+  #   portfolio_net_delta = Σ (position.delta × lots × lot_size)
+  #   Unit: INR per 1-point move in the underlying index
+  #   Example: NIFTY ATM call (delta=0.5), 2 lots, lot_size=50
+  #            → 0.5 × 2 × 50 = 50 INR/point
+  #
+  max_net_delta: 2500             # INR/point (increased from 500; operator must calibrate)
+  max_net_gamma_pct: 0.1          # portfolio gamma as % of portfolio value
+  #
+  # Net vega formula:
+  #   portfolio_net_vega = Σ (position.vega × lots × lot_size)
+  #   Unit: INR per 1% change in implied volatility
+  #
+  max_net_vega_pct: 5.0           # % of capital (renamed from max_vega_exposure which was absolute INR)
+  max_theta_daily_decay_pct: 0.5  # max daily theta burn as % of capital; Check 14 is warn-only
+  #
+  # Cache freshness parameters (used by IGreeksRepository):
+  #
+  max_age_seconds: 120            # reject Greeks older than this (no grace period for old positions)
+  new_position_grace_seconds: 90  # skip Greeks check for positions newer than this (no compute yet)
+  fallback_ttl_seconds: 300       # Tier 2 fallback Greeks key TTL
+
+margin:
+  utilization_limit_pct: 80       # alert at 80% margin utilization (MarginAlertBreached event)
+  min_free_margin_pct: 20         # block new positions if free margin < 20%
+  timeout_ms: 150                 # broker margin API timeout in milliseconds (D-9)
+
+risk_reward:
+  min_ratio: 1.5                  # renamed from minimum_ratio; minimum R:R to accept a signal
+  max_ratio: 10.0                 # unusually high R:R may indicate data error
+
+position_sizing:
+  method: "atr_kelly"             # atr_kelly | fixed_fractional | fixed_lots
+  kelly_fraction: 0.25            # fractional Kelly multiplier (25% of raw Kelly)
+  atr_period: 14
+  atr_stop_multiplier: 1.5        # stop distance = ATR × multiplier (changed from 2.0)
+  max_position_size_lots: 50      # absolute hard cap — Kelly and ATR output is min'd against this
+  min_kelly_samples: 30           # minimum historical samples before Kelly is used
+  kelly_min_sample_fallback: 0.05 # fallback as fraction of kelly_fraction when samples < min
+                                  # effective fallback = 0.05 × 0.25 = 1.25% Kelly — very conservative
+
+db:
+  risk_decisions_insert_timeout_ms: 100   # INSERT timeout for persistence-first invariant
+
+redis_fail_safe:
+  # Documents the fail-safe policy per Redis data source (C-2 resolution).
+  # Policies:
+  #   FAIL_CLOSED        — reject evaluation on any read failure
+  #   CONSERVATIVE_DEFAULT — continue evaluation with a documented safe default value
+  account_state: FAIL_CLOSED
+  portfolio_state: FAIL_CLOSED
+  graduated_response_state: FAIL_CLOSED   # treats as position_size_multiplier=0.0 (no new positions)
+  greeks_cache:
+    policy: FAIL_CLOSED
+    fallback_ttl_seconds: 300             # duration the fallback Greeks key is valid
+  correlation_matrix:
+    policy: CONSERVATIVE_DEFAULT
+    default_correlation: 1.0             # assume perfect positive correlation (maximum conservatism)
+  margin_required: FAIL_CLOSED
+
+risk_engine:
+  gather_timeout_ms: 500          # total timeout for parallel dependency gathering (Rule 10)
+
+dead_mans_switch:
+  redis_check_interval_seconds: 30    # connectivity probe frequency
+  redis_failure_threshold: 3          # consecutive failures before kill switch activation
+  db_check_interval_seconds: 30
+  db_failure_threshold: 3

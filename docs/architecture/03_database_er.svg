@@ -1,0 +1,403 @@
+<svg viewBox="0 0 1470 1150" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI',Arial,sans-serif">
+<defs>
+  <marker id="fk" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#6366f1"/>
+  </marker>
+</defs>
+<rect width="1470" height="1150" fill="#0d1117"/>
+
+<!-- TITLE -->
+<text x="735" y="34" text-anchor="middle" fill="#e2e8f0" font-size="19" font-weight="700">Database Entity Relationship Diagram</text>
+<text x="735" y="53" text-anchor="middle" fill="#64748b" font-size="11">PostgreSQL + TimescaleDB · ⊕ = Hypertable · ▶ = Primary Key · → = Foreign Key · * = append-only (INSERT only)</text>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- FK LINES (drawn behind tables) -->
+<!-- ═══════════════════════════════════════════════ -->
+<!-- 1. broker_sessions.user_id → users.id (left-side routing in COL1) -->
+<path d="M 20 289 L 6 289 L 6 153 L 20 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 2. instrument_broker_tokens.instrument_id → instruments.instrument_token (left-side routing in COL2) -->
+<path d="M 310 519 L 296 519 L 296 153 L 310 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 3. signal_events.signal_id → signals.id (left-side routing in COL3) -->
+<path d="M 600 398 L 586 398 L 586 153 L 600 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 4. order_events.order_id → orders.id (left-side routing in COL4) -->
+<path d="M 890 368 L 876 368 L 876 153 L 890 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 5. trades.order_id → orders.id (left-side routing in COL4) -->
+<path d="M 890 493 L 871 493 L 871 153 L 890 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 6. signals.recommended_instrument_id → instruments.instrument_token (COL3→COL2, gap routing) -->
+<path d="M 600 213 L 591 213 L 591 153 L 580 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 7. orders.signal_id → signals.id (COL4→COL3, gap routing) -->
+<path d="M 890 168 L 881 168 L 881 153 L 870 153" fill="none" stroke="#6366f1" stroke-width="1.2" marker-end="url(#fk)"/>
+<!-- 8. market_data.instrument_token → instruments (COL1→COL2) -->
+<path d="M 290 480 L 301 480 L 301 168 L 310 168" fill="none" stroke="#6366f1" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#fk)"/>
+<!-- 9. risk_decisions.signal_id → signals.id (COL5→COL3, routed below) -->
+<path d="M 1180 385 L 1164 385 L 1164 1060 L 858 1060 L 858 153 L 870 153" fill="none" stroke="#6366f1" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#fk)"/>
+<!-- 10. positions.instrument_id → instruments (COL5→COL2, routed below) -->
+<path d="M 1180 168 L 1168 168 L 1168 1070 L 298 1070 L 298 168 L 310 168" fill="none" stroke="#6366f1" stroke-width="1" stroke-dasharray="4,2" marker-end="url(#fk)"/>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- COL 1 — AUTH + MARKET DATA -->
+<!-- ═══════════════════════════════════════════════ -->
+<text x="155" y="83" text-anchor="middle" fill="#7c3aed" font-size="10" font-weight="700">AUTH</text>
+
+<!-- TABLE: users -->
+<rect x="20" y="90" width="270" height="113" rx="6" fill="#140c20" stroke="#7c3aed" stroke-width="1.5"/>
+<rect x="20" y="90" width="270" height="26" rx="6" fill="#4c1d95"/>
+<rect x="20" y="110" width="270" height="6" fill="#4c1d95"/>
+<text x="28" y="108" fill="#ddd6fe" font-size="11" font-weight="700">users</text>
+<line x1="20" y1="116" x2="290" y2="116" stroke="#7c3aed" stroke-width="0.5"/>
+<text x="28" y="131" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="28" y="146" fill="#94a3b8" font-size="10">  email  VARCHAR(254)  UNIQUE  NOT NULL</text>
+<text x="28" y="161" fill="#94a3b8" font-size="10">  password_hash  TEXT  NOT NULL</text>
+<text x="28" y="176" fill="#94a3b8" font-size="10">  role  ENUM(ADMIN|ANALYST|VIEWER)</text>
+<text x="28" y="191" fill="#94a3b8" font-size="10">  is_active  BOOLEAN  DEFAULT TRUE</text>
+
+<!-- TABLE: broker_sessions -->
+<rect x="20" y="212" width="270" height="143" rx="6" fill="#140c20" stroke="#7c3aed" stroke-width="1.5"/>
+<rect x="20" y="212" width="270" height="26" rx="6" fill="#4c1d95"/>
+<rect x="20" y="232" width="270" height="6" fill="#4c1d95"/>
+<text x="28" y="230" fill="#ddd6fe" font-size="11" font-weight="700">broker_sessions</text>
+<line x1="20" y1="238" x2="290" y2="238" stroke="#7c3aed" stroke-width="0.5"/>
+<text x="28" y="253" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="28" y="268" fill="#93c5fd" font-size="10">→ user_id  UUID  FK users.id  NOT NULL</text>
+<text x="28" y="283" fill="#94a3b8" font-size="10">  broker  ENUM(KITE|ANGEL|DHAN…)</text>
+<text x="28" y="298" fill="#94a3b8" font-size="10">  access_token_enc  BYTEA  (AES-256)</text>
+<text x="28" y="313" fill="#94a3b8" font-size="10">  request_token  VARCHAR  NULLABLE</text>
+<text x="28" y="328" fill="#94a3b8" font-size="10">  expires_at  TIMESTAMPTZ  NOT NULL</text>
+<text x="28" y="343" fill="#94a3b8" font-size="10">  is_active  BOOLEAN  DEFAULT TRUE</text>
+
+<!-- Market Data domain label -->
+<text x="155" y="374" text-anchor="middle" fill="#0d9488" font-size="10" font-weight="700">MARKET DATA  (TimescaleDB Hypertables ⊕)</text>
+
+<!-- TABLE: market_data -->
+<rect x="20" y="382" width="270" height="143" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="1.5"/>
+<rect x="20" y="382" width="270" height="26" rx="6" fill="#134e4a"/>
+<rect x="20" y="402" width="270" height="6" fill="#134e4a"/>
+<text x="28" y="400" fill="#99f6e4" font-size="11" font-weight="700">market_data  ⊕</text>
+<text x="210" y="400" fill="#0d9488" font-size="9" font-style="italic">chunk: 1 day</text>
+<line x1="20" y1="408" x2="290" y2="408" stroke="#0d9488" stroke-width="0.5"/>
+<text x="28" y="423" fill="#6ee7b7" font-size="10">▶◆ timestamp  TIMESTAMPTZ  PK</text>
+<text x="28" y="438" fill="#6ee7b7" font-size="10">▶◆ instrument_token  INTEGER  PK FK→instruments</text>
+<text x="28" y="453" fill="#94a3b8" font-size="10">  last_price  DECIMAL  NOT NULL</text>
+<text x="28" y="468" fill="#94a3b8" font-size="10">  bid / ask  DECIMAL</text>
+<text x="28" y="483" fill="#94a3b8" font-size="10">  volume  BIGINT</text>
+<text x="28" y="498" fill="#94a3b8" font-size="10">  oi  BIGINT  (open interest)</text>
+<text x="28" y="513" fill="#64748b" font-size="9" font-style="italic">  compress after 7d · retain 90d</text>
+
+<!-- TABLE: option_chain -->
+<rect x="20" y="534" width="270" height="173" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="1.5"/>
+<rect x="20" y="534" width="270" height="26" rx="6" fill="#134e4a"/>
+<rect x="20" y="554" width="270" height="6" fill="#134e4a"/>
+<text x="28" y="552" fill="#99f6e4" font-size="11" font-weight="700">option_chain  ⊕</text>
+<text x="194" y="552" fill="#0d9488" font-size="9" font-style="italic">chunk: 1 day</text>
+<line x1="20" y1="560" x2="290" y2="560" stroke="#0d9488" stroke-width="0.5"/>
+<text x="28" y="575" fill="#6ee7b7" font-size="10">▶◆ timestamp  TIMESTAMPTZ  PK</text>
+<text x="28" y="590" fill="#6ee7b7" font-size="10">▶◆ underlying_token  INTEGER  PK FK→instruments</text>
+<text x="28" y="605" fill="#6ee7b7" font-size="10">▶◆ strike_price  DECIMAL  PK</text>
+<text x="28" y="620" fill="#6ee7b7" font-size="10">▶◆ option_type  ENUM(CE|PE)  PK</text>
+<text x="28" y="635" fill="#94a3b8" font-size="10">  iv  DECIMAL  (Black-Scholes implied vol)</text>
+<text x="28" y="650" fill="#94a3b8" font-size="10">  delta / gamma / theta / vega  DECIMAL</text>
+<text x="28" y="665" fill="#94a3b8" font-size="10">  oi  BIGINT · volume  BIGINT</text>
+<text x="28" y="680" fill="#94a3b8" font-size="10">  bid / ask  DECIMAL</text>
+<text x="28" y="695" fill="#64748b" font-size="9" font-style="italic">  compress after 7d · retain 90d</text>
+
+<!-- TABLE: market_features -->
+<rect x="20" y="716" width="270" height="128" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="1.5"/>
+<rect x="20" y="716" width="270" height="26" rx="6" fill="#134e4a"/>
+<rect x="20" y="736" width="270" height="6" fill="#134e4a"/>
+<text x="28" y="734" fill="#99f6e4" font-size="11" font-weight="700">market_features  ⊕</text>
+<line x1="20" y1="742" x2="290" y2="742" stroke="#0d9488" stroke-width="0.5"/>
+<text x="28" y="757" fill="#6ee7b7" font-size="10">▶◆ timestamp  TIMESTAMPTZ  PK</text>
+<text x="28" y="772" fill="#6ee7b7" font-size="10">▶◆ instrument_token  INTEGER  PK FK→instruments</text>
+<text x="28" y="787" fill="#94a3b8" font-size="10">  rsi_14 / ema_20 / ema_50  DECIMAL</text>
+<text x="28" y="802" fill="#94a3b8" font-size="10">  macd / macd_signal / atr_14  DECIMAL</text>
+<text x="28" y="817" fill="#94a3b8" font-size="10">  vwap  DECIMAL · regime  ENUM</text>
+<text x="28" y="832" fill="#64748b" font-size="9" font-style="italic">  compress after 7d · retain 1yr</text>
+
+<!-- TABLE: ohlcv aggregates -->
+<rect x="20" y="853" width="270" height="143" rx="6" fill="#0a1a18" stroke="#0d9488" stroke-width="1.5"/>
+<rect x="20" y="853" width="270" height="26" rx="6" fill="#134e4a"/>
+<rect x="20" y="873" width="270" height="6" fill="#134e4a"/>
+<text x="28" y="871" fill="#99f6e4" font-size="11" font-weight="700">ohlcv_1m / 5m / 15m / 1h / 1d  ⊕</text>
+<line x1="20" y1="879" x2="290" y2="879" stroke="#0d9488" stroke-width="0.5"/>
+<text x="28" y="894" fill="#6ee7b7" font-size="10">▶◆ bucket  TIMESTAMPTZ  PK (time_bucket)</text>
+<text x="28" y="909" fill="#6ee7b7" font-size="10">▶◆ instrument_token  INTEGER  PK FK→instruments</text>
+<text x="28" y="924" fill="#94a3b8" font-size="10">  open / high / low / close  DECIMAL</text>
+<text x="28" y="939" fill="#94a3b8" font-size="10">  volume  BIGINT · oi  BIGINT</text>
+<text x="28" y="954" fill="#64748b" font-size="9" font-style="italic">  Continuous aggregate from market_data</text>
+<text x="28" y="969" fill="#64748b" font-size="9" font-style="italic">  1m/5m/15m from ticks · 1h/1d from lower TF</text>
+<text x="28" y="984" fill="#64748b" font-size="9" font-style="italic">  retain: 1m=1yr · 1h=5yr · 1d=10yr</text>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- COL 2 — INSTRUMENTS -->
+<!-- ═══════════════════════════════════════════════ -->
+<text x="445" y="83" text-anchor="middle" fill="#2563eb" font-size="10" font-weight="700">INSTRUMENTS  (master reference — FK target for most tables)</text>
+
+<!-- TABLE: instruments -->
+<rect x="310" y="90" width="270" height="233" rx="6" fill="#0c1626" stroke="#2563eb" stroke-width="2"/>
+<rect x="310" y="90" width="270" height="26" rx="6" fill="#1e3a5f"/>
+<rect x="310" y="110" width="270" height="6" fill="#1e3a5f"/>
+<text x="318" y="108" fill="#bfdbfe" font-size="11" font-weight="700">instruments</text>
+<text x="500" y="108" fill="#2563eb" font-size="9" font-style="italic">idx: (tradingsymbol, exchange)</text>
+<line x1="310" y1="116" x2="580" y2="116" stroke="#2563eb" stroke-width="0.5"/>
+<text x="318" y="131" fill="#fde68a" font-size="10">▶ instrument_token  INTEGER  PK</text>
+<text x="318" y="146" fill="#94a3b8" font-size="10">  tradingsymbol  VARCHAR  NOT NULL</text>
+<text x="318" y="161" fill="#94a3b8" font-size="10">  exchange  ENUM(NSE|NFO|BSE)  NOT NULL</text>
+<text x="318" y="176" fill="#94a3b8" font-size="10">  segment  VARCHAR  NOT NULL</text>
+<text x="318" y="191" fill="#94a3b8" font-size="10">  instrument_type  ENUM  NOT NULL</text>
+<text x="318" y="206" fill="#94a3b8" font-size="10">  name  VARCHAR  NOT NULL</text>
+<text x="318" y="221" fill="#94a3b8" font-size="10">  expiry_date  DATE  NULLABLE</text>
+<text x="318" y="236" fill="#94a3b8" font-size="10">  strike_price  DECIMAL  NULLABLE</text>
+<text x="318" y="251" fill="#94a3b8" font-size="10">  option_type  ENUM(CE|PE)  NULLABLE</text>
+<text x="318" y="266" fill="#94a3b8" font-size="10">  lot_size  INTEGER  NOT NULL</text>
+<text x="318" y="281" fill="#94a3b8" font-size="10">  tick_size  DECIMAL  NOT NULL</text>
+<text x="318" y="296" fill="#94a3b8" font-size="10">  is_active  BOOLEAN  DEFAULT TRUE</text>
+<text x="318" y="311" fill="#64748b" font-size="9" font-style="italic">  daily refresh 07:30 IST from Kite CSV</text>
+
+<!-- TABLE: expiry_calendar -->
+<rect x="310" y="333" width="270" height="113" rx="6" fill="#0c1626" stroke="#2563eb" stroke-width="1.5"/>
+<rect x="310" y="333" width="270" height="26" rx="6" fill="#1e3a5f"/>
+<rect x="310" y="353" width="270" height="6" fill="#1e3a5f"/>
+<text x="318" y="351" fill="#bfdbfe" font-size="11" font-weight="700">expiry_calendar</text>
+<line x1="310" y1="359" x2="580" y2="359" stroke="#2563eb" stroke-width="0.5"/>
+<text x="318" y="374" fill="#fde68a" font-size="10">▶ id  SERIAL  PK</text>
+<text x="318" y="389" fill="#94a3b8" font-size="10">  underlying  VARCHAR  (NIFTY|BANKNIFTY…)</text>
+<text x="318" y="404" fill="#94a3b8" font-size="10">  expiry_date  DATE  NOT NULL</text>
+<text x="318" y="419" fill="#94a3b8" font-size="10">  expiry_type  ENUM(WEEKLY|MONTHLY)</text>
+<text x="318" y="434" fill="#94a3b8" font-size="10">  is_trading_day  BOOLEAN  NOT NULL</text>
+
+<!-- TABLE: instrument_broker_tokens -->
+<rect x="310" y="456" width="270" height="113" rx="6" fill="#0c1626" stroke="#2563eb" stroke-width="1.5"/>
+<rect x="310" y="456" width="270" height="26" rx="6" fill="#1e3a5f"/>
+<rect x="310" y="476" width="270" height="6" fill="#1e3a5f"/>
+<text x="318" y="474" fill="#bfdbfe" font-size="11" font-weight="700">instrument_broker_tokens</text>
+<line x1="310" y1="482" x2="580" y2="482" stroke="#2563eb" stroke-width="0.5"/>
+<text x="318" y="497" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="318" y="512" fill="#93c5fd" font-size="10">→ instrument_id  INTEGER  FK instruments.instrument_token</text>
+<text x="318" y="527" fill="#94a3b8" font-size="10">  broker  ENUM  NOT NULL</text>
+<text x="318" y="542" fill="#94a3b8" font-size="10">  broker_token  INTEGER  NOT NULL</text>
+<text x="318" y="557" fill="#94a3b8" font-size="10">  lot_size_at_import  INTEGER  NOT NULL</text>
+
+<!-- TABLE: instrument_refresh_log -->
+<rect x="310" y="579" width="270" height="113" rx="6" fill="#0c1626" stroke="#2563eb" stroke-width="1.5"/>
+<rect x="310" y="579" width="270" height="26" rx="6" fill="#1e3a5f"/>
+<rect x="310" y="599" width="270" height="6" fill="#1e3a5f"/>
+<text x="318" y="597" fill="#bfdbfe" font-size="11" font-weight="700">instrument_refresh_log</text>
+<line x1="310" y1="605" x2="580" y2="605" stroke="#2563eb" stroke-width="0.5"/>
+<text x="318" y="620" fill="#fde68a" font-size="10">▶ id  SERIAL  PK</text>
+<text x="318" y="635" fill="#94a3b8" font-size="10">  refresh_date  DATE  UNIQUE  NOT NULL</text>
+<text x="318" y="650" fill="#94a3b8" font-size="10">  status  ENUM(SUCCESS|FAILED)  NOT NULL</text>
+<text x="318" y="665" fill="#94a3b8" font-size="10">  records_updated  INTEGER</text>
+<text x="318" y="680" fill="#94a3b8" font-size="10">  duration_ms  INTEGER</text>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- COL 3 — SIGNALS + NEWS -->
+<!-- ═══════════════════════════════════════════════ -->
+<text x="735" y="83" text-anchor="middle" fill="#d97706" font-size="10" font-weight="700">SIGNALS</text>
+
+<!-- TABLE: signals -->
+<rect x="600" y="90" width="270" height="233" rx="6" fill="#160d02" stroke="#d97706" stroke-width="1.5"/>
+<rect x="600" y="90" width="270" height="26" rx="6" fill="#451a03"/>
+<rect x="600" y="110" width="270" height="6" fill="#451a03"/>
+<text x="608" y="108" fill="#fde68a" font-size="11" font-weight="700">signals</text>
+<line x1="600" y1="116" x2="870" y2="116" stroke="#d97706" stroke-width="0.5"/>
+<text x="608" y="131" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="608" y="146" fill="#94a3b8" font-size="10">  symbol  VARCHAR  NOT NULL</text>
+<text x="608" y="161" fill="#94a3b8" font-size="10">  direction  ENUM(LONG|SHORT)  NOT NULL</text>
+<text x="608" y="176" fill="#94a3b8" font-size="10">  signal_type  ENUM  NOT NULL</text>
+<text x="608" y="191" fill="#93c5fd" font-size="10">→ recommended_instrument_id  INTEGER  FK</text>
+<text x="608" y="206" fill="#94a3b8" font-size="10">  score  DECIMAL(5,2)  NOT NULL</text>
+<text x="608" y="221" fill="#94a3b8" font-size="10">  confidence  INTEGER  NOT NULL</text>
+<text x="608" y="236" fill="#94a3b8" font-size="10">  weight_version  VARCHAR(64)  NOT NULL</text>
+<text x="608" y="251" fill="#94a3b8" font-size="10">  state  ENUM  NOT NULL</text>
+<text x="608" y="266" fill="#94a3b8" font-size="10">  generated_at  TIMESTAMPTZ  NOT NULL</text>
+<text x="608" y="281" fill="#94a3b8" font-size="10">  expires_at  TIMESTAMPTZ  NOT NULL</text>
+<text x="608" y="296" fill="#c084fc" font-size="10">  score_breakdown  JSONB  NOT NULL</text>
+<text x="608" y="311" fill="#c084fc" font-size="10">  confidence_breakdown  JSONB  NOT NULL</text>
+
+<!-- TABLE: signal_events -->
+<rect x="600" y="333" width="270" height="113" rx="6" fill="#160d02" stroke="#d97706" stroke-width="1.5"/>
+<rect x="600" y="333" width="270" height="26" rx="6" fill="#451a03"/>
+<rect x="600" y="353" width="270" height="6" fill="#451a03"/>
+<text x="608" y="351" fill="#fde68a" font-size="11" font-weight="700">signal_events  ⊕</text>
+<text x="740" y="351" fill="#d97706" font-size="9" font-style="italic">chunk: 1 day</text>
+<line x1="600" y1="359" x2="870" y2="359" stroke="#d97706" stroke-width="0.5"/>
+<text x="608" y="374" fill="#6ee7b7" font-size="10">▶◆ timestamp  TIMESTAMPTZ  PK</text>
+<text x="608" y="389" fill="#6ee7b7" font-size="10">▶◆ signal_id  UUID  PK FK→signals.id</text>
+<text x="608" y="404" fill="#94a3b8" font-size="10">  event_type  VARCHAR  NOT NULL</text>
+<text x="608" y="419" fill="#94a3b8" font-size="10">  old_state  ENUM  NULLABLE</text>
+<text x="608" y="434" fill="#94a3b8" font-size="10">  new_state  ENUM  NOT NULL</text>
+
+<!-- News/AI domain label -->
+<text x="735" y="465" text-anchor="middle" fill="#7c3aed" font-size="10" font-weight="700">NEWS &amp; AI</text>
+
+<!-- TABLE: news -->
+<rect x="600" y="475" width="270" height="113" rx="6" fill="#120820" stroke="#7c3aed" stroke-width="1.5"/>
+<rect x="600" y="475" width="270" height="26" rx="6" fill="#3b0764"/>
+<rect x="600" y="495" width="270" height="6" fill="#3b0764"/>
+<text x="608" y="493" fill="#ddd6fe" font-size="11" font-weight="700">news</text>
+<line x1="600" y1="501" x2="870" y2="501" stroke="#7c3aed" stroke-width="0.5"/>
+<text x="608" y="516" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="608" y="531" fill="#94a3b8" font-size="10">  title  TEXT  NOT NULL</text>
+<text x="608" y="546" fill="#94a3b8" font-size="10">  source  VARCHAR  NOT NULL</text>
+<text x="608" y="561" fill="#94a3b8" font-size="10">  url_hash  VARCHAR(64)  UNIQUE</text>
+<text x="608" y="576" fill="#94a3b8" font-size="10">  published_at  TIMESTAMPTZ  NOT NULL</text>
+
+<!-- TABLE: ai_usage_log -->
+<rect x="600" y="598" width="270" height="158" rx="6" fill="#120820" stroke="#7c3aed" stroke-width="1.5"/>
+<rect x="600" y="598" width="270" height="26" rx="6" fill="#3b0764"/>
+<rect x="600" y="618" width="270" height="6" fill="#3b0764"/>
+<text x="608" y="616" fill="#ddd6fe" font-size="11" font-weight="700">ai_usage_log</text>
+<line x1="600" y1="624" x2="870" y2="624" stroke="#7c3aed" stroke-width="0.5"/>
+<text x="608" y="639" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="608" y="654" fill="#94a3b8" font-size="10">  provider  ENUM(OPENAI|ANTHROPIC…)</text>
+<text x="608" y="669" fill="#94a3b8" font-size="10">  model  VARCHAR  NOT NULL</text>
+<text x="608" y="684" fill="#94a3b8" font-size="10">  operation  VARCHAR  NOT NULL</text>
+<text x="608" y="699" fill="#94a3b8" font-size="10">  prompt_version  VARCHAR  NOT NULL</text>
+<text x="608" y="714" fill="#94a3b8" font-size="10">  input_tokens / output_tokens  INTEGER</text>
+<text x="608" y="729" fill="#94a3b8" font-size="10">  cost_usd  DECIMAL(10,6)</text>
+<text x="608" y="744" fill="#94a3b8" font-size="10">  cache_hit  BOOLEAN  NOT NULL</text>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- COL 4 — ORDERS -->
+<!-- ═══════════════════════════════════════════════ -->
+<text x="1025" y="83" text-anchor="middle" fill="#0891b2" font-size="10" font-weight="700">ORDERS  (2yr SEBI retention)</text>
+
+<!-- TABLE: orders -->
+<rect x="890" y="90" width="270" height="203" rx="6" fill="#071320" stroke="#0891b2" stroke-width="1.5"/>
+<rect x="890" y="90" width="270" height="26" rx="6" fill="#0c4a6e"/>
+<rect x="890" y="110" width="270" height="6" fill="#0c4a6e"/>
+<text x="898" y="108" fill="#bae6fd" font-size="11" font-weight="700">orders</text>
+<text x="1040" y="108" fill="#0891b2" font-size="9" font-style="italic">2yr (SEBI)</text>
+<line x1="890" y1="116" x2="1160" y2="116" stroke="#0891b2" stroke-width="0.5"/>
+<text x="898" y="131" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="898" y="146" fill="#93c5fd" font-size="10">→ signal_id  UUID  FK signals.id</text>
+<text x="898" y="161" fill="#93c5fd" font-size="10">→ instrument_id  INTEGER  FK instruments</text>
+<text x="898" y="176" fill="#94a3b8" font-size="10">  broker_order_id  VARCHAR  UNIQUE</text>
+<text x="898" y="191" fill="#94a3b8" font-size="10">  quantity  INTEGER  NOT NULL</text>
+<text x="898" y="206" fill="#94a3b8" font-size="10">  filled_qty  INTEGER  DEFAULT 0</text>
+<text x="898" y="221" fill="#94a3b8" font-size="10">  avg_fill_price  DECIMAL  NULLABLE</text>
+<text x="898" y="236" fill="#94a3b8" font-size="10">  order_type  ENUM(MARKET|LIMIT|SL)</text>
+<text x="898" y="251" fill="#94a3b8" font-size="10">  product_type  ENUM(MIS|NRML|CNC)</text>
+<text x="898" y="266" fill="#94a3b8" font-size="10">  state  ENUM  NOT NULL</text>
+<text x="898" y="281" fill="#64748b" font-size="9" font-style="italic">  idx: (broker_order_id) · (signal_id)</text>
+
+<!-- TABLE: order_events -->
+<rect x="890" y="303" width="270" height="113" rx="6" fill="#071320" stroke="#0891b2" stroke-width="1.5"/>
+<rect x="890" y="303" width="270" height="26" rx="6" fill="#0c4a6e"/>
+<rect x="890" y="323" width="270" height="6" fill="#0c4a6e"/>
+<text x="898" y="321" fill="#bae6fd" font-size="11" font-weight="700">order_events  ⊕</text>
+<text x="1048" y="321" fill="#0891b2" font-size="9" font-style="italic">2yr (SEBI)</text>
+<line x1="890" y1="329" x2="1160" y2="329" stroke="#0891b2" stroke-width="0.5"/>
+<text x="898" y="344" fill="#6ee7b7" font-size="10">▶◆ timestamp  TIMESTAMPTZ  PK</text>
+<text x="898" y="359" fill="#6ee7b7" font-size="10">▶◆ order_id  UUID  PK FK→orders.id</text>
+<text x="898" y="374" fill="#94a3b8" font-size="10">  event_type  VARCHAR  NOT NULL</text>
+<text x="898" y="389" fill="#94a3b8" font-size="10">  state_from  ENUM  NULLABLE</text>
+<text x="898" y="404" fill="#94a3b8" font-size="10">  state_to  ENUM  NOT NULL</text>
+
+<!-- TABLE: trades -->
+<rect x="890" y="426" width="270" height="128" rx="6" fill="#071320" stroke="#0891b2" stroke-width="1.5"/>
+<rect x="890" y="426" width="270" height="26" rx="6" fill="#0c4a6e"/>
+<rect x="890" y="446" width="270" height="6" fill="#0c4a6e"/>
+<text x="898" y="444" fill="#bae6fd" font-size="11" font-weight="700">trades</text>
+<text x="1000" y="444" fill="#0891b2" font-size="9" font-style="italic">2yr (SEBI)</text>
+<line x1="890" y1="452" x2="1160" y2="452" stroke="#0891b2" stroke-width="0.5"/>
+<text x="898" y="467" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="898" y="482" fill="#93c5fd" font-size="10">→ order_id  UUID  FK orders.id  NOT NULL</text>
+<text x="898" y="497" fill="#93c5fd" font-size="10">→ instrument_id  INTEGER  FK instruments</text>
+<text x="898" y="512" fill="#94a3b8" font-size="10">  quantity  INTEGER  NOT NULL</text>
+<text x="898" y="527" fill="#94a3b8" font-size="10">  price  DECIMAL  NOT NULL</text>
+<text x="898" y="542" fill="#94a3b8" font-size="10">  filled_at  TIMESTAMPTZ  NOT NULL</text>
+
+<!-- ═══════════════════════════════════════════════ -->
+<!-- COL 5 — POSITIONS + RISK/SYSTEM -->
+<!-- ═══════════════════════════════════════════════ -->
+<text x="1315" y="83" text-anchor="middle" fill="#0891b2" font-size="10" font-weight="700">POSITIONS</text>
+
+<!-- TABLE: positions -->
+<rect x="1180" y="90" width="270" height="188" rx="6" fill="#071320" stroke="#0891b2" stroke-width="1.5"/>
+<rect x="1180" y="90" width="270" height="26" rx="6" fill="#0c4a6e"/>
+<rect x="1180" y="110" width="270" height="6" fill="#0c4a6e"/>
+<text x="1188" y="108" fill="#bae6fd" font-size="11" font-weight="700">positions</text>
+<line x1="1180" y1="116" x2="1450" y2="116" stroke="#0891b2" stroke-width="0.5"/>
+<text x="1188" y="131" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="1188" y="146" fill="#93c5fd" font-size="10">→ instrument_id  INTEGER  FK instruments</text>
+<text x="1188" y="161" fill="#94a3b8" font-size="10">  symbol  VARCHAR  NOT NULL</text>
+<text x="1188" y="176" fill="#94a3b8" font-size="10">  qty  INTEGER  NOT NULL</text>
+<text x="1188" y="191" fill="#94a3b8" font-size="10">  avg_cost  DECIMAL  NOT NULL</text>
+<text x="1188" y="206" fill="#94a3b8" font-size="10">  ltp  DECIMAL  (Redis live price)</text>
+<text x="1188" y="221" fill="#94a3b8" font-size="10">  unrealized_pnl  DECIMAL</text>
+<text x="1188" y="236" fill="#94a3b8" font-size="10">  delta / gamma / theta / vega  DECIMAL</text>
+<text x="1188" y="251" fill="#94a3b8" font-size="10">  opened_at  TIMESTAMPTZ  NOT NULL</text>
+<text x="1188" y="266" fill="#64748b" font-size="9" font-style="italic">  30s MTM loop · Greeks via Black-Scholes</text>
+
+<!-- Risk/System domain label -->
+<text x="1315" y="301" text-anchor="middle" fill="#dc2626" font-size="10" font-weight="700">RISK &amp; SYSTEM  (append-only *)</text>
+
+<!-- TABLE: risk_decisions -->
+<rect x="1180" y="311" width="270" height="143" rx="6" fill="#160404" stroke="#dc2626" stroke-width="1.5"/>
+<rect x="1180" y="311" width="270" height="26" rx="6" fill="#450a0a"/>
+<rect x="1180" y="331" width="270" height="6" fill="#450a0a"/>
+<text x="1188" y="329" fill="#fca5a5" font-size="11" font-weight="700">risk_decisions  *</text>
+<text x="1340" y="329" fill="#7f1d1d" font-size="9" font-style="italic">INSERT only</text>
+<line x1="1180" y1="337" x2="1450" y2="337" stroke="#dc2626" stroke-width="0.5"/>
+<text x="1188" y="352" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="1188" y="367" fill="#93c5fd" font-size="10">→ signal_id  UUID  FK signals.id</text>
+<text x="1188" y="382" fill="#94a3b8" font-size="10">  decision  ENUM(APPROVED|REJECTED)</text>
+<text x="1188" y="397" fill="#c084fc" font-size="10">  check_results  JSONB  NOT NULL</text>
+<text x="1188" y="412" fill="#c084fc" font-size="10">  account_state  JSONB  NOT NULL</text>
+<text x="1188" y="427" fill="#94a3b8" font-size="10">  check_duration_ms  INTEGER</text>
+<text x="1188" y="442" fill="#64748b" font-size="9" font-style="italic">  No UPDATE or DELETE — immutable audit</text>
+
+<!-- TABLE: kill_switch_events -->
+<rect x="1180" y="464" width="270" height="128" rx="6" fill="#160404" stroke="#dc2626" stroke-width="2"/>
+<rect x="1180" y="464" width="270" height="26" rx="6" fill="#450a0a"/>
+<rect x="1180" y="484" width="270" height="6" fill="#450a0a"/>
+<text x="1188" y="482" fill="#fca5a5" font-size="11" font-weight="700">kill_switch_events  *</text>
+<text x="1340" y="482" fill="#7f1d1d" font-size="9" font-style="italic">INSERT only</text>
+<line x1="1180" y1="490" x2="1450" y2="490" stroke="#dc2626" stroke-width="0.5"/>
+<text x="1188" y="505" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="1188" y="520" fill="#94a3b8" font-size="10">  action  ENUM(ACTIVATED|DEACTIVATED)</text>
+<text x="1188" y="535" fill="#94a3b8" font-size="10">  trigger_type  ENUM  NOT NULL</text>
+<text x="1188" y="550" fill="#94a3b8" font-size="10">  reason  TEXT  NOT NULL  (min 10 chars)</text>
+<text x="1188" y="565" fill="#94a3b8" font-size="10">  actor  VARCHAR  NOT NULL</text>
+<text x="1188" y="580" fill="#94a3b8" font-size="10">  timestamp  TIMESTAMPTZ  NOT NULL</text>
+
+<!-- TABLE: strategy_performance -->
+<rect x="1180" y="602" width="270" height="128" rx="6" fill="#160404" stroke="#dc2626" stroke-width="1.5"/>
+<rect x="1180" y="602" width="270" height="26" rx="6" fill="#450a0a"/>
+<rect x="1180" y="622" width="270" height="6" fill="#450a0a"/>
+<text x="1188" y="620" fill="#fca5a5" font-size="11" font-weight="700">strategy_performance</text>
+<line x1="1180" y1="628" x2="1450" y2="628" stroke="#dc2626" stroke-width="0.5"/>
+<text x="1188" y="643" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="1188" y="658" fill="#94a3b8" font-size="10">  strategy_name  VARCHAR  NOT NULL</text>
+<text x="1188" y="673" fill="#94a3b8" font-size="10">  period_start / period_end  DATE</text>
+<text x="1188" y="688" fill="#94a3b8" font-size="10">  win_rate  DECIMAL  NOT NULL</text>
+<text x="1188" y="703" fill="#94a3b8" font-size="10">  total_trades  INTEGER  NOT NULL</text>
+<text x="1188" y="718" fill="#94a3b8" font-size="10">  sharpe_ratio  DECIMAL</text>
+
+<!-- TABLE: audit_logs -->
+<rect x="1180" y="740" width="270" height="128" rx="6" fill="#160404" stroke="#dc2626" stroke-width="1.5"/>
+<rect x="1180" y="740" width="270" height="26" rx="6" fill="#450a0a"/>
+<rect x="1180" y="760" width="270" height="6" fill="#450a0a"/>
+<text x="1188" y="758" fill="#fca5a5" font-size="11" font-weight="700">audit_logs</text>
+<line x1="1180" y1="766" x2="1450" y2="766" stroke="#dc2626" stroke-width="0.5"/>
+<text x="1188" y="781" fill="#fde68a" font-size="10">▶ id  UUID  PK</text>
+<text x="1188" y="796" fill="#93c5fd" font-size="10">→ user_id  UUID  FK users.id  NULLABLE</text>
+<text x="1188" y="811" fill="#94a3b8" font-size="10">  action  VARCHAR  NOT NULL</text>
+<text x="1188" y="826" fill="#94a3b8" font-size="10">  resource  VARCHAR  NOT NULL</text>
+<text x="1188" y="841" fill="#c084fc" font-size="10">  old_value / new_value  JSONB</text>
+<text x="1188" y="856" fill="#94a3b8" font-size="10">  ip_address  INET · created_at  TIMESTAMPTZ</text>
+
+<!-- LEGEND -->
+<rect x="20" y="1075" width="1430" height="62" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="735" y="1094" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">Legend</text>
+<text x="40" y="1111" fill="#fde68a" font-size="10">▶ Primary Key</text>
+<text x="150" y="1111" fill="#6ee7b7" font-size="10">▶◆ Composite PK (Hypertable)</text>
+<text x="320" y="1111" fill="#93c5fd" font-size="10">→ Foreign Key</text>
+<text x="420" y="1111" fill="#c084fc" font-size="10">JSONB special type</text>
+<text x="540" y="1111" fill="#94a3b8" font-size="10">⊕ TimescaleDB Hypertable</text>
+<text x="700" y="1111" fill="#94a3b8" font-size="10">* Append-only table (INSERT only DB role)</text>
+<rect x="880" y="1100" width="20" height="8" rx="2" fill="none" stroke="#6366f1" stroke-width="1.5"/>
+<text x="905" y="1111" fill="#6366f1" font-size="10">FK relationship line (solid = close, dashed = long-distance routing)</text>
+<text x="40" y="1127" fill="#64748b" font-size="10">All tables use UUID PKs except: instruments (INTEGER instrument_token from Kite), expiry_calendar (SERIAL), instrument_refresh_log (SERIAL) · All timestamps are TIMESTAMPTZ (UTC) · Decimal monetary values never stored as FLOAT</text>
+</svg>

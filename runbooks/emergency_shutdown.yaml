@@ -1,0 +1,133 @@
+---
+id: RB-005
+title: Emergency Shutdown & Recovery
+version: "1.0"
+severity: P0
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  Full emergency shutdown of the trading platform. Used when all other
+  mitigation has failed or when regulatory/compliance requires immediate halt.
+  Covers both graceful and hard shutdown, plus full recovery sequence.
+
+emergency_contacts:
+  - role: On-call SRE
+    channel: PagerDuty → #incident-trading
+  - role: Head of Trading Technology
+    note: Must be notified for P0 incidents
+  - role: Chief Risk Officer
+    note: Required if positions > ₹25L or regulatory concern
+  - role: SEBI Reporting
+    note: Required for system failures affecting market integrity > 15 min
+
+shutdown_sequence:
+  phase1_halt_trading:
+    - id: "1.1"
+      action: Activate kill switch
+      command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/broker/kill-switch"
+
+    - id: "1.2"
+      action: Verify no orders in flight
+      command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/orders?state=PENDING"
+      wait: 10 seconds
+
+    - id: "1.3"
+      action: Lock live trading ramp-up
+      command: >
+        curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN'
+        -H 'Content-Type: application/json'
+        -d '{"reason": "Emergency shutdown"}'
+        https://api/api/v1/trading-safety/lock
+
+  phase2_snapshot_state:
+    - id: "2.1"
+      action: Snapshot open positions
+      command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/positions > /tmp/positions_snapshot_$(date +%Y%m%d_%H%M%S).json"
+
+    - id: "2.2"
+      action: Snapshot pending orders
+      command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/orders?state=PENDING > /tmp/orders_snapshot_$(date +%Y%m%d_%H%M%S).json"
+
+    - id: "2.3"
+      action: Export broker positions directly
+      note: Log into broker portal and download position report as CSV for cross-reference.
+
+  phase3_graceful_stop:
+    - id: "3.1"
+      action: Stop background tasks gracefully
+      command: "systemctl stop stocksignal-api"
+      timeout: 30 seconds
+      note: Systemd sends SIGTERM; FastAPI lifespan handles graceful shutdown.
+
+    - id: "3.2"
+      action: Verify process stopped
+      command: "systemctl is-active stocksignal-api"
+      expected: "inactive"
+
+    - id: "3.3"
+      action: If not stopped, force kill
+      command: "systemctl kill stocksignal-api --signal=SIGKILL"
+      note: Last resort only.
+
+  phase4_data_integrity:
+    - id: "4.1"
+      action: Check DB for incomplete transactions
+      command: >
+        psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c
+        "SELECT count(*) FROM orders WHERE state='PENDING' AND updated_at < NOW() - INTERVAL '5 minutes';"
+
+    - id: "4.2"
+      action: Trigger PostgreSQL checkpoint
+      command: "psql -h $DB_HOST -U $DB_USER -d $DB_NAME -c 'CHECKPOINT;'"
+
+    - id: "4.3"
+      action: Flush Redis to disk
+      command: "redis-cli -h $REDIS_HOST BGSAVE && sleep 5 && redis-cli -h $REDIS_HOST LASTSAVE"
+
+recovery_sequence:
+  - id: "R1"
+    action: Identify root cause (RCA)
+    note: Must be documented before recovery proceeds.
+
+  - id: "R2"
+    action: Validate infrastructure health
+    checklist:
+      - PostgreSQL reachable and accepting connections
+      - Redis reachable and kill switch state is clean
+      - Broker API healthy
+      - All dependent services operational
+
+  - id: "R3"
+    action: Start application
+    command: "systemctl start stocksignal-api"
+
+  - id: "R4"
+    action: Verify startup
+    command: "curl https://api/api/v1/health"
+    expected: '{"status": "healthy", "database": "healthy", "redis": "healthy"}'
+
+  - id: "R5"
+    action: Run full reconciliation
+    command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/reconciliation/trigger"
+
+  - id: "R6"
+    action: Review reconciliation report
+    command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/reconciliation/runs?limit=1"
+    expected: status=COMPLETED, discrepancy_count=0
+
+  - id: "R7"
+    action: Unlock trading safety
+    command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/trading-safety/unlock"
+
+  - id: "R8"
+    action: Deactivate kill switch
+    command: "curl -X DELETE -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/broker/kill-switch"
+
+  - id: "R9"
+    action: Place test signal and verify end-to-end
+    note: Use paper broker. Verify signal → risk check → order → fill → position update.
+
+  - id: "R10"
+    action: Notify stakeholders of recovery
+    note: Post recovery notice to #trading-ops with RCA summary and preventive actions.

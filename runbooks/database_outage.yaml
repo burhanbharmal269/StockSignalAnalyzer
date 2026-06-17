@@ -1,0 +1,98 @@
+---
+id: RB-003
+title: Database Outage Response
+version: "1.0"
+severity: P1
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  PostgreSQL is the persistence layer for all OMS state: orders, positions,
+  signals, fills, reconciliation runs, and paper trading stats.
+  The OMS persistence-first invariant means the DB going down halts all order
+  placement (the DB write is attempted before the broker call).
+
+trigger_conditions:
+  - PostgreSQL connection pool exhausted or refused
+  - Alembic schema version mismatch detected at startup
+  - SQLAlchemy OperationalError in order creation path
+
+detection:
+  - Alert: "db.connection_pool_exhausted" or "db.query_failed"
+  - Log pattern: "OperationalError" or "asyncpg.PostgresConnectionError"
+  - Health endpoint: GET /api/v1/health returns {"database": "unhealthy"}
+
+impact:
+  - Order placement: BLOCKED (persistence-first invariant — DB write fails before broker call)
+  - Read endpoints: Degrade gracefully if read replicas are available
+  - Reconciliation: Cannot persist run records; reconciliation logic itself may still run
+  - Authentication: Degraded — user lookup requires DB
+
+steps:
+  - id: "1"
+    action: Check application health endpoint
+    command: "curl https://api/api/v1/health"
+    expected: '{"database": "unhealthy"}' or similar
+
+  - id: "2"
+    action: Confirm PostgreSQL status
+    command: "pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER"
+    expected: "accepting connections"
+
+  - id: "3"
+    action: Check PostgreSQL logs
+    command: "journalctl -u postgresql --since '5 minutes ago' | tail -50"
+    note: Look for: out of connections, disk full, OOM kill, WAL corruption.
+
+  - id: "4"
+    action: Check connection count
+    command: >
+      psql -h $DB_HOST -U $DB_USER -c
+      "SELECT count(*) FROM pg_stat_activity WHERE datname='$DB_NAME';"
+    note: Compare against max_connections. If at limit, consider increasing or killing idle.
+
+  - id: "5"
+    action: Kill idle connections if at limit
+    command: >
+      psql -h $DB_HOST -U $DB_USER -c
+      "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+       WHERE datname='$DB_NAME' AND state='idle' AND query_start < NOW() - INTERVAL '10 minutes';"
+
+  - id: "6"
+    action: Check disk space
+    command: "df -h /var/lib/postgresql"
+    note: PostgreSQL will crash if WAL fills the disk. Purge old WAL files if needed.
+
+  - id: "7"
+    action: Restart PostgreSQL if needed
+    command: "systemctl restart postgresql"
+    note: Verify no open transactions that would be rolled back.
+
+  - id: "8"
+    action: Restart application to reset connection pool
+    command: "systemctl restart stocksignal-api"
+
+  - id: "9"
+    action: Verify schema integrity
+    command: "cd /app && alembic current"
+    expected: Shows current migration head with no "(head)" discrepancy.
+
+  - id: "10"
+    action: Run reconciliation after recovery
+    command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/reconciliation/trigger"
+    note: Verify positions and orders match broker state after outage window.
+
+  - id: "11"
+    action: Review missed signals during outage window
+    note: >
+      Query signals table for PENDING signals during the outage window.
+      Determine if any should be re-evaluated or expired.
+
+rollback:
+  - Point-in-time recovery from last WAL backup if data corruption detected
+  - Escalate to DBA for PITR within 30 minutes of data loss detection
+
+escalation:
+  - L1: On-call SRE (PagerDuty)
+  - L2: DBA / Infrastructure Lead
+  - L3: CTO (if data loss suspected)

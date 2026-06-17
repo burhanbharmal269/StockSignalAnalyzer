@@ -1,0 +1,153 @@
+<svg viewBox="0 0 1400 1000" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI',Arial,sans-serif">
+<defs>
+  <marker id="arr" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#475569"/>
+  </marker>
+  <marker id="arrG" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#22c55e"/>
+  </marker>
+  <marker id="arrR" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#ef4444"/>
+  </marker>
+  <marker id="arrO" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#f59e0b"/>
+  </marker>
+  <marker id="arrB" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#3b82f6"/>
+  </marker>
+  <marker id="arrC" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#06b6d4"/>
+  </marker>
+</defs>
+
+<rect width="1400" height="1000" fill="#0d1117"/>
+
+<!-- Title -->
+<text x="700" y="36" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700">Order Management System — Flow</text>
+<text x="700" y="56" text-anchor="middle" fill="#64748b" font-size="12">Signal-to-Exchange lifecycle · Kill Switch gating · State machine · Post-fill processing</text>
+
+<!-- ─── INCOMING SIGNAL ─── -->
+<rect x="450" y="75" width="500" height="55" rx="10" fill="#1a2030" stroke="#a855f7" stroke-width="1.5"/>
+<text x="700" y="98" text-anchor="middle" fill="#d8b4fe" font-size="13" font-weight="600">signal.risk.approved  (Event Bus)</text>
+<text x="700" y="116" text-anchor="middle" fill="#64748b" font-size="11">signal_id · symbol · recommended_instrument · recommended_quantity · confidence_pct · valid_until</text>
+
+<line x1="700" y1="130" x2="700" y2="158" stroke="#a855f7" stroke-width="2" marker-end="url(#arr)"/>
+
+<!-- ─── GATE 1: KILL SWITCH ─── -->
+<polygon points="700,160 820,200 700,240 580,200" fill="#2d1515" stroke="#ef4444" stroke-width="2"/>
+<text x="700" y="196" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="700">Kill Switch</text>
+<text x="700" y="213" text-anchor="middle" fill="#f87171" font-size="11">Active?</text>
+
+<!-- BLOCKED path -->
+<line x1="820" y1="200" x2="960" y2="200" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrR)"/>
+<text x="890" y="192" text-anchor="middle" fill="#ef4444" font-size="11">YES — BLOCKED</text>
+<rect x="960" y="175" width="200" height="50" rx="8" fill="#2d1515" stroke="#ef4444" stroke-width="1.5"/>
+<text x="1060" y="198" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">Order Rejected</text>
+<text x="1060" y="215" text-anchor="middle" fill="#64748b" font-size="10">reason=KILL_SWITCH · logged · notified</text>
+
+<line x1="700" y1="240" x2="700" y2="268" stroke="#22c55e" stroke-width="2" marker-end="url(#arrG)"/>
+<text x="715" y="260" fill="#22c55e" font-size="11">NO — PASS</text>
+
+<!-- ─── GATE 2: SIGNAL EXPIRY ─── -->
+<polygon points="700,270 820,310 700,350 580,310" fill="#1e2a1e" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="700" y="306" text-anchor="middle" fill="#fde68a" font-size="12" font-weight="700">Signal</text>
+<text x="700" y="323" text-anchor="middle" fill="#fbbf24" font-size="11">Expired?</text>
+
+<line x1="820" y1="310" x2="960" y2="310" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrR)"/>
+<text x="890" y="302" text-anchor="middle" fill="#ef4444" font-size="11">EXPIRED</text>
+<rect x="960" y="286" width="200" height="50" rx="8" fill="#2d1515" stroke="#ef4444" stroke-width="1.5"/>
+<text x="1060" y="309" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">Signal Discarded</text>
+<text x="1060" y="326" text-anchor="middle" fill="#64748b" font-size="10">valid_until elapsed · no order</text>
+
+<line x1="700" y1="350" x2="700" y2="378" stroke="#22c55e" stroke-width="2" marker-end="url(#arrG)"/>
+<text x="715" y="370" fill="#22c55e" font-size="11">VALID — PASS</text>
+
+<!-- ─── GATE 3: ORDER RATE LIMITER ─── -->
+<polygon points="700,380 820,418 700,456 580,418" fill="#1e2a1e" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="700" y="414" text-anchor="middle" fill="#fde68a" font-size="12" font-weight="700">Rate Limit</text>
+<text x="700" y="431" text-anchor="middle" fill="#fbbf24" font-size="11">Exceeded?</text>
+
+<line x1="820" y1="418" x2="960" y2="418" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrR)"/>
+<text x="890" y="410" text-anchor="middle" fill="#ef4444" font-size="11">EXCEEDED</text>
+<rect x="960" y="393" width="200" height="50" rx="8" fill="#2d1515" stroke="#ef4444" stroke-width="1.5"/>
+<text x="1060" y="416" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">Order Throttled</text>
+<text x="1060" y="433" text-anchor="middle" fill="#64748b" font-size="10">&gt;5 orders/min or &gt;50/day</text>
+
+<line x1="700" y1="456" x2="700" y2="484" stroke="#22c55e" stroke-width="2" marker-end="url(#arrG)"/>
+<text x="715" y="476" fill="#22c55e" font-size="11">UNDER LIMIT — PASS</text>
+
+<!-- ─── ORDER BUILDER ─── -->
+<rect x="450" y="486" width="500" height="72" rx="10" fill="#1e2530" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="700" y="509" text-anchor="middle" fill="#a5f3fc" font-size="13" font-weight="600">Order Builder</text>
+<text x="700" y="527" text-anchor="middle" fill="#64748b" font-size="11">tradingsymbol · quantity (lots × lot_size) · order_type (MARKET/LIMIT)</text>
+<text x="700" y="545" text-anchor="middle" fill="#64748b" font-size="11">product_type (MIS/NRML) · validity (DAY/IOC) · exchange (NFO)</text>
+
+<line x1="700" y1="558" x2="700" y2="586" stroke="#06b6d4" stroke-width="2" marker-end="url(#arrC)"/>
+
+<!-- ─── BROKER NORMALIZATION ─── -->
+<rect x="450" y="588" width="500" height="55" rx="10" fill="#1e2030" stroke="#fb923c" stroke-width="1.5"/>
+<text x="700" y="611" text-anchor="middle" fill="#fdba74" font-size="13" font-weight="600">Broker Normalization  (inside KiteBroker adapter)</text>
+<text x="700" y="629" text-anchor="middle" fill="#64748b" font-size="11">INTRADAY→MIS · OVERNIGHT→NRML · DELIVERY→CNC · NSE_FO→NFO · LIMIT→LIMIT</text>
+
+<line x1="700" y1="643" x2="700" y2="671" stroke="#fb923c" stroke-width="2" marker-end="url(#arr)"/>
+
+<!-- ─── KITE API CALL ─── -->
+<rect x="450" y="673" width="500" height="50" rx="10" fill="#1e2030" stroke="#fb923c" stroke-width="1.5"/>
+<text x="700" y="695" text-anchor="middle" fill="#fdba74" font-size="13" font-weight="600">IBroker.place_order()  →  Kite Connect REST API</text>
+<text x="700" y="713" text-anchor="middle" fill="#64748b" font-size="11">POST /orders/{variety} · broker_order_id returned · SLO &lt; 500ms P99</text>
+
+<line x1="700" y1="723" x2="700" y2="751" stroke="#fb923c" stroke-width="2" marker-end="url(#arr)"/>
+
+<!-- ─── ORDER STATE MACHINE ─── -->
+<rect x="250" y="753" width="900" height="160" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+<text x="700" y="775" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="700">Order State Machine</text>
+
+<!-- States -->
+<rect x="280" y="786" width="100" height="36" rx="6" fill="#1e2530" stroke="#94a3b8" stroke-width="1.5"/>
+<text x="330" y="808" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">PENDING</text>
+
+<line x1="380" y1="804" x2="415" y2="804" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+<rect x="415" y="786" width="100" height="36" rx="6" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="465" y="808" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="600">OPEN</text>
+
+<!-- OPEN → paths -->
+<line x1="515" y1="798" x2="555" y2="780" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="555" y="763" width="110" height="36" rx="6" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="610" y="785" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">FILLED</text>
+
+<line x1="515" y1="804" x2="555" y2="804" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrO)"/>
+<rect x="555" y="786" width="125" height="36" rx="6" fill="#1e2530" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="618" y="808" text-anchor="middle" fill="#fde68a" font-size="11" font-weight="600">PART_FILLED</text>
+
+<line x1="515" y1="816" x2="555" y2="830" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrR)"/>
+<rect x="555" y="813" width="110" height="36" rx="6" fill="#2d1515" stroke="#ef4444" stroke-width="1.5"/>
+<text x="610" y="835" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">REJECTED</text>
+
+<rect x="415" y="836" width="100" height="36" rx="6" fill="#2d1515" stroke="#ef4444" stroke-width="1.5"/>
+<text x="465" y="858" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">CANCELLED</text>
+<line x1="465" y1="836" x2="465" y2="822" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrR)"/>
+
+<!-- After FILLED -->
+<line x1="665" y1="781" x2="740" y2="781" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="740" y="763" width="130" height="36" rx="6" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="805" y="785" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">order.filled event</text>
+
+<!-- State machine note -->
+<text x="700" y="885" text-anchor="middle" fill="#64748b" font-size="10">Illegal transitions raise OrderStateError · Every transition logged to order_events hypertable · PENDING→OPEN on broker ack</text>
+
+<!-- ─── POST-FILL PROCESSING ─── -->
+<line x1="870" y1="781" x2="940" y2="820" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="940" y="800" width="400" height="110" rx="10" fill="#0f1a15" stroke="#22c55e" stroke-width="1.5"/>
+<text x="1140" y="822" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Post-Fill Processing  (event consumers)</text>
+<text x="1140" y="840" text-anchor="middle" fill="#64748b" font-size="11">① PositionService — update/open position</text>
+<text x="1140" y="857" text-anchor="middle" fill="#64748b" font-size="11">② RiskEngine — refresh Greeks, MTM, margin</text>
+<text x="1140" y="874" text-anchor="middle" fill="#64748b" font-size="11">③ Analytics — record slippage, P&amp;L contribution</text>
+<text x="1140" y="891" text-anchor="middle" fill="#64748b" font-size="11">④ NotificationService — push fill alert</text>
+<text x="1140" y="908" text-anchor="middle" fill="#64748b" font-size="11">⑤ Dashboard — live position update push</text>
+
+<!-- ─── BOTTOM KEY ─── -->
+<rect x="20" y="930" width="1360" height="55" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="700" y="952" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="700">OMS Design Invariants</text>
+<text x="700" y="970" text-anchor="middle" fill="#64748b" font-size="11">Kill Switch check is synchronous in-memory (zero-latency) · OMS is single consumer group (no parallel writes) · Every order persists to order_events (append-only) · All order state changes are immutable events</text>
+</svg>

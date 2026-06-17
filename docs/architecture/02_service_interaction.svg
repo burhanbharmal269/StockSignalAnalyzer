@@ -1,0 +1,293 @@
+<svg viewBox="0 0 1700 1120" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI',Arial,sans-serif">
+<defs>
+  <marker id="arr" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#475569"/>
+  </marker>
+  <marker id="arrB" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#3b82f6"/>
+  </marker>
+  <marker id="arrG" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#22c55e"/>
+  </marker>
+  <marker id="arrO" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#f59e0b"/>
+  </marker>
+  <marker id="arrR" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#ef4444"/>
+  </marker>
+  <marker id="arrP" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#a855f7"/>
+  </marker>
+  <marker id="arrC" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+    <polygon points="0 0,8 3,0 6" fill="#06b6d4"/>
+  </marker>
+</defs>
+
+<rect width="1700" height="1120" fill="#0d1117"/>
+
+<!-- Title -->
+<text x="850" y="35" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700">Service Interaction Diagram</text>
+<text x="850" y="55" text-anchor="middle" fill="#64748b" font-size="12">Runtime service topology · Event-driven · Redis Streams backbone · Async AI decoupled from signal path</text>
+
+<!-- ── ROW 1: EXTERNAL SOURCES ── -->
+<rect x="20" y="70" width="130" height="28" rx="4" fill="#1e2530"/>
+<text x="85" y="89" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">EXTERNAL SOURCES</text>
+
+<rect x="80" y="105" width="155" height="52" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="158" y="127" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600">Kite WebSocket</text>
+<text x="158" y="146" text-anchor="middle" fill="#64748b" font-size="10">Binary tick stream · wss://</text>
+
+<rect x="270" y="105" width="155" height="52" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="348" y="127" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600">Kite REST API</text>
+<text x="348" y="146" text-anchor="middle" fill="#64748b" font-size="10">Orders · History · Margin</text>
+
+<rect x="460" y="105" width="155" height="52" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="538" y="127" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600">NSE Data API</text>
+<text x="538" y="146" text-anchor="middle" fill="#64748b" font-size="10">Option chain · Indices</text>
+
+<rect x="650" y="105" width="155" height="52" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="728" y="127" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600">News API</text>
+<text x="728" y="146" text-anchor="middle" fill="#64748b" font-size="10">RSS · NewsData.io</text>
+
+<rect x="840" y="105" width="155" height="52" rx="8" fill="#1e1040" stroke="#a855f7" stroke-width="1.5"/>
+<text x="918" y="127" text-anchor="middle" fill="#d8b4fe" font-size="12" font-weight="600">OpenAI API</text>
+<text x="918" y="146" text-anchor="middle" fill="#64748b" font-size="10">gpt-4o-mini · async</text>
+
+<rect x="1060" y="105" width="155" height="52" rx="8" fill="#1e2530" stroke="#475569" stroke-width="1.5"/>
+<text x="1138" y="127" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">NSE Exchange</text>
+<text x="1138" y="146" text-anchor="middle" fill="#64748b" font-size="10">NFO · Order matching</text>
+
+<rect x="1250" y="105" width="155" height="52" rx="8" fill="#1e2530" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="1328" y="127" text-anchor="middle" fill="#a5f3fc" font-size="12" font-weight="600">Telegram / Email</text>
+<text x="1328" y="146" text-anchor="middle" fill="#64748b" font-size="10">INotifier · Push alerts</text>
+
+<!-- ── ROW 2: ADAPTERS / MANAGERS ── -->
+<line x1="158" y1="157" x2="158" y2="193" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrB)"/>
+<rect x="80" y="195" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="158" y="217" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">WebSocket Manager</text>
+<text x="158" y="235" text-anchor="middle" fill="#64748b" font-size="10">State machine · Reconnect</text>
+
+<line x1="348" y1="157" x2="348" y2="193" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrB)"/>
+<rect x="270" y="195" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="348" y="217" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Broker Session Svc</text>
+<text x="348" y="235" text-anchor="middle" fill="#64748b" font-size="10">Token · Refresh · Encrypt</text>
+
+<line x1="538" y1="157" x2="538" y2="193" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrB)"/>
+<rect x="460" y="195" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="538" y="217" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">OptionChain Poller</text>
+<text x="538" y="235" text-anchor="middle" fill="#64748b" font-size="10">REST · 60s interval</text>
+
+<line x1="728" y1="157" x2="728" y2="193" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrB)"/>
+<rect x="650" y="195" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="728" y="217" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">News Poller</text>
+<text x="728" y="235" text-anchor="middle" fill="#64748b" font-size="10">Fetch · Dedup · Ingest</text>
+
+<line x1="918" y1="157" x2="918" y2="193" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arrP)"/>
+<rect x="840" y="195" width="155" height="52" rx="8" fill="#1e1040" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="5,3"/>
+<text x="918" y="217" text-anchor="middle" fill="#d8b4fe" font-size="12" font-weight="600">Sentiment Service</text>
+<text x="918" y="235" text-anchor="middle" fill="#64748b" font-size="10">Async · Cache · Fallback</text>
+
+<rect x="1030" y="195" width="185" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="1123" y="217" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Instrument Master Svc</text>
+<text x="1123" y="235" text-anchor="middle" fill="#64748b" font-size="10">07:30 refresh · Redis cache</text>
+
+<rect x="1250" y="195" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="1328" y="217" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Notification Service</text>
+<text x="1328" y="235" text-anchor="middle" fill="#64748b" font-size="10">INotifier · Telegram</text>
+<line x1="1328" y1="195" x2="1328" y2="157" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arrC)"/>
+
+<!-- ── EVENT BUS ── -->
+<line x1="158" y1="247" x2="158" y2="305" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<line x1="538" y1="247" x2="538" y2="305" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<line x1="728" y1="247" x2="728" y2="325" stroke="#a855f7" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrP)"/>
+
+<rect x="20" y="305" width="1200" height="58" rx="10" fill="#1a1020" stroke="#a855f7" stroke-width="2"/>
+<text x="620" y="328" text-anchor="middle" fill="#d8b4fe" font-size="14" font-weight="700">REDIS STREAMS — EVENT BUS</text>
+<text x="620" y="347" text-anchor="middle" fill="#7c3aed" font-size="10">market_data.tick · market_data.candle · features.technical · features.regime · features.sentiment · signal.strategy · signal.score · signal.confidence</text>
+<text x="620" y="358" text-anchor="middle" fill="#6d28d9" font-size="10">signal.risk.approved · signal.risk.rejected · order.submitted · order.filled · order.rejected · position.opened · risk.limit.breached · system.kill_switch · system.heartbeat</text>
+
+<!-- News sentiment arrives at bus -->
+<line x1="918" y1="247" x2="918" y2="332" stroke="#a855f7" stroke-width="1.2" stroke-dasharray="5,3" marker-end="url(#arrP)"/>
+<text x="950" y="288" fill="#a855f7" font-size="9">async sentiment</text>
+
+<!-- ── ROW 3: COMPUTATION SERVICES ── -->
+<line x1="200" y1="363" x2="200" y2="403" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="130" y="405" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="208" y="427" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Candle Aggregator</text>
+<text x="208" y="445" text-anchor="middle" fill="#64748b" font-size="10">1m·5m·15m·1h</text>
+
+<line x1="380" y1="363" x2="380" y2="403" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="310" y="405" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="388" y="427" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Feature Engineering</text>
+<text x="388" y="445" text-anchor="middle" fill="#64748b" font-size="10">RSI·EMA·MACD·ATR·OI</text>
+
+<line x1="570" y1="363" x2="570" y2="403" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="490" y="405" width="155" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="568" y="427" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Regime Engine</text>
+<text x="568" y="445" text-anchor="middle" fill="#64748b" font-size="10">Bull·Bear·Side·HiVol</text>
+
+<line x1="750" y1="363" x2="750" y2="403" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<rect x="670" y="405" width="490" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="915" y="427" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Strategy Evaluator × 5  (parallel consumer groups)</text>
+<text x="915" y="445" text-anchor="middle" fill="#64748b" font-size="10">Momentum · Breakout · Trend Following · OI Analysis · VWAP Analysis → IStrategy.evaluate()</text>
+
+<!-- publish back to bus -->
+<line x1="208" y1="457" x2="208" y2="503" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<line x1="388" y1="457" x2="388" y2="503" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<line x1="568" y1="457" x2="568" y2="503" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+<line x1="915" y1="457" x2="915" y2="503" stroke="#22c55e" stroke-width="1.5" marker-end="url(#arrG)"/>
+
+<!-- ── ROW 4: SIGNAL PIPELINE ── -->
+<rect x="20" y="505" width="1200" height="20" rx="4" fill="#1a1f14" stroke="#22c55e" stroke-width="0.5" stroke-dasharray="4,3"/>
+<text x="620" y="519" text-anchor="middle" fill="#4ade80" font-size="10" font-weight="600">features.technical.computed · features.regime.detected · signal.strategy.evaluated → consumed from Event Bus</text>
+
+<rect x="130" y="535" width="160" height="65" rx="8" fill="#1e2a10" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="210" y="557" text-anchor="middle" fill="#fde68a" font-size="12" font-weight="600">Scoring Engine</text>
+<text x="210" y="573" text-anchor="middle" fill="#64748b" font-size="10">Regime-adaptive weights</text>
+<text x="210" y="589" text-anchor="middle" fill="#64748b" font-size="10">0–100 score · JSONB</text>
+<line x1="290" y1="567" x2="350" y2="567" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrO)"/>
+
+<rect x="350" y="535" width="160" height="65" rx="8" fill="#1e2a10" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="430" y="557" text-anchor="middle" fill="#fde68a" font-size="12" font-weight="600">Confidence Engine</text>
+<text x="430" y="573" text-anchor="middle" fill="#64748b" font-size="10">Win rate · Regime match</text>
+<text x="430" y="589" text-anchor="middle" fill="#64748b" font-size="10">Confidence % ≥ 65</text>
+<line x1="510" y1="567" x2="570" y2="567" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrO)"/>
+
+<rect x="570" y="535" width="160" height="65" rx="8" fill="#1e2a10" stroke="#22c55e" stroke-width="1.5"/>
+<text x="650" y="557" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Strike Selector</text>
+<text x="650" y="573" text-anchor="middle" fill="#64748b" font-size="10">DTE · Delta-target</text>
+<text x="650" y="589" text-anchor="middle" fill="#64748b" font-size="10">Liquidity check</text>
+<line x1="730" y1="567" x2="790" y2="567" stroke="#475569" stroke-width="1.5" marker-end="url(#arr)"/>
+
+<rect x="790" y="535" width="165" height="65" rx="8" fill="#2d1515" stroke="#ef4444" stroke-width="2"/>
+<text x="873" y="557" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="700">Risk Engine</text>
+<text x="873" y="573" text-anchor="middle" fill="#64748b" font-size="10">15 pre-trade checks</text>
+<text x="873" y="589" text-anchor="middle" fill="#64748b" font-size="10">Greeks · Margin · Limits</text>
+
+<!-- Risk feeds back to bus and forward to OMS -->
+<line x1="955" y1="567" x2="1020" y2="567" stroke="#ef4444" stroke-width="1.5" marker-end="url(#arrR)"/>
+
+<rect x="1020" y="535" width="160" height="65" rx="8" fill="#1a2030" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="1100" y="557" text-anchor="middle" fill="#a5f3fc" font-size="12" font-weight="600">OMS</text>
+<text x="1100" y="573" text-anchor="middle" fill="#64748b" font-size="10">Kill switch gate · Builder</text>
+<text x="1100" y="589" text-anchor="middle" fill="#64748b" font-size="10">Order state machine</text>
+
+<!-- ── KILL SWITCH ── -->
+<rect x="790" y="465" width="165" height="45" rx="8" fill="#2d1010" stroke="#ef4444" stroke-width="2"/>
+<text x="873" y="485" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="700">Kill Switch</text>
+<text x="873" y="501" text-anchor="middle" fill="#64748b" font-size="10">Redis state · Auto + manual</text>
+<line x1="873" y1="510" x2="873" y2="535" stroke="#ef4444" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrR)"/>
+<line x1="873" y1="465" x2="873" y2="460" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="4,3"/>
+<line x1="873" y1="460" x2="620" y2="460" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="4,3"/>
+<line x1="620" y1="460" x2="620" y2="363" stroke="#ef4444" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrR)"/>
+<text x="750" y="455" fill="#ef4444" font-size="9">risk.limit.breached</text>
+
+<!-- ── ROW 5: BROKER + POST-TRADE ── -->
+<line x1="1100" y1="600" x2="1100" y2="640" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arrC)"/>
+
+<rect x="1020" y="642" width="160" height="52" rx="8" fill="#1e2030" stroke="#fb923c" stroke-width="1.5"/>
+<text x="1100" y="665" text-anchor="middle" fill="#fdba74" font-size="12" font-weight="600">Broker Adapter</text>
+<text x="1100" y="682" text-anchor="middle" fill="#64748b" font-size="10">IBroker · KiteBroker</text>
+<line x1="1100" y1="694" x2="1100" y2="730" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="1138" y1="668" x2="1200" y2="668" stroke="#fb923c" stroke-width="1.5" marker-end="url(#arr)"/>
+
+<rect x="1020" y="732" width="160" height="40" rx="8" fill="#1a1a2e" stroke="#818cf8" stroke-width="1.5"/>
+<text x="1100" y="756" text-anchor="middle" fill="#c7d2fe" font-size="12" font-weight="600">NSE Exchange</text>
+
+<rect x="1200" y="642" width="160" height="52" rx="8" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="1280" y="665" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Position Service</text>
+<text x="1280" y="682" text-anchor="middle" fill="#64748b" font-size="10">Greeks update · MTM</text>
+
+<!-- Post-trade back to bus -->
+<rect x="130" y="642" width="155" height="52" rx="8" fill="#141a1e" stroke="#475569" stroke-width="1.5"/>
+<text x="208" y="664" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">Position MTM</text>
+<text x="208" y="681" text-anchor="middle" fill="#64748b" font-size="10">30s loop · Greeks P&amp;L</text>
+
+<rect x="310" y="642" width="155" height="52" rx="8" fill="#141a1e" stroke="#475569" stroke-width="1.5"/>
+<text x="388" y="664" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">Analytics Service</text>
+<text x="388" y="681" text-anchor="middle" fill="#64748b" font-size="10">P&amp;L · Slippage · Attribution</text>
+
+<rect x="490" y="642" width="155" height="52" rx="8" fill="#141a1e" stroke="#475569" stroke-width="1.5"/>
+<text x="568" y="664" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">Reconciliation Svc</text>
+<text x="568" y="681" text-anchor="middle" fill="#64748b" font-size="10">On reconnect · Diff · Alert</text>
+
+<rect x="670" y="642" width="155" height="52" rx="8" fill="#141a1e" stroke="#475569" stroke-width="1.5"/>
+<text x="748" y="664" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">Health Check Svc</text>
+<text x="748" y="681" text-anchor="middle" fill="#64748b" font-size="10">Dead Man's Switch</text>
+
+<rect x="850" y="642" width="155" height="52" rx="8" fill="#141a1e" stroke="#475569" stroke-width="1.5"/>
+<text x="928" y="664" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">Backtesting Engine</text>
+<text x="928" y="681" text-anchor="middle" fill="#64748b" font-size="10">Replay · Walk-forward</text>
+
+<!-- Feeds from event bus to row 5 services -->
+<line x1="200" y1="525" x2="200" y2="535" stroke="#22c55e" stroke-width="1" stroke-dasharray="3,2"/>
+<line x1="200" y1="600" x2="200" y2="640" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+<line x1="388" y1="600" x2="388" y2="640" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+<line x1="568" y1="600" x2="568" y2="640" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+<line x1="748" y1="600" x2="748" y2="640" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+<line x1="928" y1="600" x2="928" y2="640" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
+
+<!-- Back to event bus from OMS/Broker -->
+<line x1="1180" y1="567" x2="1240" y2="567" stroke="#475569" stroke-width="1.2" stroke-dasharray="3,2"/>
+<line x1="1240" y1="567" x2="1240" y2="850" stroke="#475569" stroke-width="1.2" stroke-dasharray="3,2"/>
+<line x1="1240" y1="850" x2="1100" y2="850" stroke="#475569" stroke-width="1.2" stroke-dasharray="3,2"/>
+<line x1="1100" y1="850" x2="1100" y2="694" stroke="#475569" stroke-width="0.8" stroke-dasharray="3,2"/>
+
+<!-- Notification paths -->
+<line x1="1280" y1="694" x2="1328" y2="730" stroke="#06b6d4" stroke-width="1.2" stroke-dasharray="3,2"/>
+<line x1="928" y1="465" x2="1328" y2="465" stroke="#06b6d4" stroke-width="1.2" stroke-dasharray="3,2"/>
+<line x1="1328" y1="465" x2="1328" y2="247" stroke="#06b6d4" stroke-width="1.2" stroke-dasharray="3,2" marker-end="url(#arrC)"/>
+<rect x="1250" y="730" width="155" height="42" rx="8" fill="#1e2530" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="1328" y="754" text-anchor="middle" fill="#a5f3fc" font-size="12" font-weight="600">INotifier</text>
+<text x="1328" y="769" text-anchor="middle" fill="#64748b" font-size="10">Telegram · Email</text>
+<line x1="1328" y1="772" x2="1328" y2="800" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arrC)"/>
+<rect x="1250" y="800" width="155" height="40" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="1328" y="824" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600">Telegram / Email</text>
+
+<!-- ── STORAGE LAYER ── -->
+<rect x="20" y="790" width="1200" height="22" rx="4" fill="#1e2530"/>
+<text x="610" y="806" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">STORAGE  (Infrastructure)</text>
+
+<rect x="20" y="818" width="180" height="48" rx="7" fill="#1e2530" stroke="#4ade80" stroke-width="1.5"/>
+<text x="110" y="839" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">PostgreSQL + TimescaleDB</text>
+<text x="110" y="855" text-anchor="middle" fill="#64748b" font-size="10">Signals · Orders · Trades</text>
+
+<rect x="215" y="818" width="160" height="48" rx="7" fill="#1e2530" stroke="#f87171" stroke-width="1.5"/>
+<text x="295" y="839" text-anchor="middle" fill="#fca5a5" font-size="11" font-weight="600">Redis</text>
+<text x="295" y="855" text-anchor="middle" fill="#64748b" font-size="10">Streams · Cache · State</text>
+
+<rect x="390" y="818" width="160" height="48" rx="7" fill="#1e2530" stroke="#60a5fa" stroke-width="1.5"/>
+<text x="470" y="839" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="600">TimescaleDB Hypertables</text>
+<text x="470" y="855" text-anchor="middle" fill="#64748b" font-size="10">market_data · option_chain</text>
+
+<rect x="565" y="818" width="160" height="48" rx="7" fill="#1e2530" stroke="#a78bfa" stroke-width="1.5"/>
+<text x="645" y="839" text-anchor="middle" fill="#c4b5fd" font-size="11" font-weight="600">S3 / GCS</text>
+<text x="645" y="855" text-anchor="middle" fill="#64748b" font-size="10">Cold archive · Parquet</text>
+
+<rect x="740" y="818" width="160" height="48" rx="7" fill="#1e2530" stroke="#34d399" stroke-width="1.5"/>
+<text x="820" y="839" text-anchor="middle" fill="#6ee7b7" font-size="11" font-weight="600">Prometheus + Grafana</text>
+<text x="820" y="855" text-anchor="middle" fill="#64748b" font-size="10">Metrics · Dashboards</text>
+
+<rect x="915" y="818" width="160" height="48" rx="7" fill="#1e2530" stroke="#fb923c" stroke-width="1.5"/>
+<text x="995" y="839" text-anchor="middle" fill="#fdba74" font-size="11" font-weight="600">PgBouncer</text>
+<text x="995" y="855" text-anchor="middle" fill="#64748b" font-size="10">Connection pool · Txn mode</text>
+
+<!-- Legend -->
+<rect x="20" y="880" width="1640" height="60" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<rect x="40" y="896" width="10" height="10" rx="2" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+<text x="58" y="905" fill="#94a3b8" font-size="10">External</text>
+<rect x="120" y="896" width="10" height="10" rx="2" fill="#14301e" stroke="#22c55e" stroke-width="1.5"/>
+<text x="138" y="905" fill="#94a3b8" font-size="10">Adapters/Managers</text>
+<rect x="250" y="896" width="10" height="10" rx="2" fill="#1e2a10" stroke="#f59e0b" stroke-width="1.5"/>
+<text x="268" y="905" fill="#94a3b8" font-size="10">Signal Pipeline</text>
+<rect x="360" y="896" width="10" height="10" rx="2" fill="#2d1515" stroke="#ef4444" stroke-width="1.5"/>
+<text x="378" y="905" fill="#94a3b8" font-size="10">Risk / Safety</text>
+<rect x="455" y="896" width="10" height="10" rx="2" fill="#1a2030" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="473" y="905" fill="#94a3b8" font-size="10">OMS / Broker</text>
+<rect x="560" y="896" width="10" height="10" rx="2" fill="#1e1040" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4,3"/>
+<text x="578" y="905" fill="#94a3b8" font-size="10">Async AI (decoupled)</text>
+<rect x="700" y="896" width="10" height="10" rx="2" fill="#141a1e" stroke="#475569" stroke-width="1.5"/>
+<text x="718" y="905" fill="#94a3b8" font-size="10">Monitoring/Analytics</text>
+<text x="850" y="905" fill="#64748b" font-size="10">All inter-service communication via Event Bus · Dashed lines = async · Solid lines = sync or event-driven</text>
+<text x="850" y="920" fill="#475569" font-size="10">Risk Engine is the only component that can activate Kill Switch automatically · OMS is single consumer of signal.risk.approved</text>
+</svg>

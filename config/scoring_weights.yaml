@@ -1,0 +1,81 @@
+# V1 FnO Scoring Component Weights
+# Source of truth: docs/19_STRATEGY_FRAMEWORK.md, docs/21_SIGNAL_ENGINE.md
+# DO NOT change values without updating the architecture docs and bumping version.
+# The SHA-256 hash of this file is stored with every signal for audit traceability.
+
+version: "1.0"
+
+components:
+  oi_buildup:
+    max_score: 25
+    description: "OI quadrant classification + PCR + Max Pain + FII futures"
+
+  trend:
+    max_score: 20
+    description: "ADX gate + EMA alignment + DI spread + Supertrend + MTF confirmation"
+    hard_gate:
+      adx_minimum: 20
+      behaviour: "return 0 when ADX < 20 — no override permitted"
+
+  option_chain:
+    max_score: 20
+    description: "IV Percentile + IV Skew + GEX + OI wall proximity + PCR trend"
+
+  volume:
+    max_score: 15
+    description: "Relative volume ratio + OBV + cumulative delta + VPOC proximity"
+
+  vwap:
+    max_score: 10
+    description: "Session VWAP with σ bands — Mode A (mean-reversion) or Mode B (trend)"
+
+  sentiment:
+    max_score: 5
+    description: "AI provider news/FII sentiment score mapping"
+
+  iv_analysis:
+    max_score: 5
+    description: "IV Percentile + IVR + HV/IV ratio — direction-aware"
+
+total_max_score: 100
+
+# Execution gate — enforced by Risk Engine, not Scoring Engine
+execution_gate:
+  min_score: 20       # lowered from 35: only VOLUME+VWAP available (no OI/IV)
+  min_confidence: 25  # lowered from 65: no historical performance data in paper mode
+
+# Signal classification thresholds (Phase 14 Signal Engine only — not used by Scoring Engine)
+thresholds:
+  strong:  85   # STRONG BUY / STRONG SELL — full position size
+  standard: 70  # BUY / SELL — standard position size
+  neutral:  50  # NEUTRAL — informational only, not executed
+  weak:     35  # WEAK — consider reducing existing positions
+
+# ---------------------------------------------------------------------------
+# Phase 11 — Scoring Engine penalty amounts (all amounts are positive; applied as negatives)
+# ---------------------------------------------------------------------------
+penalties:
+  data_staleness_per_component: 10    # −10 per stale component
+  data_staleness_cap: 20              # maximum staleness penalty total
+  staleness_threshold_seconds: 300    # data older than this triggers staleness penalty
+  low_conviction_moderate: 8          # conviction in [direction_min, 0.60)
+  low_conviction_severe: 15           # conviction < direction_conviction_min (already NEUTRAL)
+  market_hours_opening: 10            # 09:15–09:30 IST opening volatility
+  market_hours_closing: 20            # >= 15:15 IST closing illiquidity
+  regime_mismatch: 20                 # signal direction opposes market regime
+  expiry_dte_zero: 10                 # DTE = 0 (expiry day)
+  expiry_dte_one: 5                   # DTE = 1 (day before expiry)
+
+# Component-specific data freshness thresholds (seconds)
+data_freshness:
+  tick_data_max_age: 60
+  option_chain_max_age: 120
+  news_max_age: 3600
+
+# Data quality gates
+data_quality:
+  data_completeness_min_pct: 40       # available_components / 7 × 100 must meet this (lowered: OI/IV data not yet available)
+  score_quality_high_min_conviction: 0.60
+  score_quality_medium_min_conviction: 0.50
+  score_quality_high_min_completeness_pct: 100.0
+  score_quality_medium_max_staleness_points: 10

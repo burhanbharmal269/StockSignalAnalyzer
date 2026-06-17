@@ -1,0 +1,18 @@
+version: "1.0"
+signal:
+  ttl_minutes: 15
+  market_close_time: "15:15:00"
+  dedup_ttl_minutes: 30
+  gate:
+    min_score: 20       # lowered: only VOLUME+VWAP available (no OI/IV) → max ~40
+    min_confidence: 25
+
+  # Default execution mode — seeded into Redis at startup if key absent.
+  # At runtime, use POST /api/v1/execution/mode to change without restart.
+  # MANUAL    — signals generated + stored, NO orders placed
+  # AUTOMATIC — signals generated + stored + orders routed to Kite broker
+  execution_mode: "MANUAL"
+
+  redis:
+    dedup_key_prefix: "signal:dedup"
+    active_key_prefix: "signal:active"

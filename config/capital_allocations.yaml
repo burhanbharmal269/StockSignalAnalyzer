@@ -1,0 +1,27 @@
+# Capital Allocation configuration — loaded on first-run seed.
+# The default GLOBAL allocation is seeded and activated automatically.
+# Operators can update allocated_capital via API.
+
+default_active: global_default
+
+allocations:
+  global_default:
+    name: Global Default
+    allocation_type: GLOBAL
+    universe_scope: ALL_FNO
+    # HYBRID: uses configured capital for sizing, broker margin for exposure
+    capital_source_mode: HYBRID
+    # Override this with the actual capital you want to deploy.
+    # 0 in HYBRID mode means the system falls back to broker_capital.
+    allocated_capital: "0"
+    allocated_margin: null
+    description: "Default global allocation (HYBRID mode). Set allocated_capital to your budget."
+
+  paper_default:
+    name: Paper Default
+    allocation_type: PAPER
+    universe_scope: ALL_FNO
+    capital_source_mode: CONFIGURED
+    allocated_capital: "1000000"
+    allocated_margin: "500000"
+    description: "Paper trading allocation: INR 10L capital, INR 5L margin."

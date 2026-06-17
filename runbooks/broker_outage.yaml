@@ -1,0 +1,84 @@
+---
+id: RB-001
+title: Broker Outage Response
+version: "1.0"
+severity: P1
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  Steps to take when the broker API (Kite/Angel/etc.) becomes unreachable
+  or returns persistent errors. The OMS kill switch is FAIL CLOSED — trading
+  stops automatically when the kill switch cannot be verified.
+
+trigger_conditions:
+  - Broker health endpoint returns non-200 for > 30 seconds
+  - BrokerExecutionMonitor logs 5+ consecutive failures
+  - AutoKillSwitchService activates kill switch automatically
+
+detection:
+  - Alert: "broker.health_check_failed" fires in Grafana
+  - Check: GET /api/v1/broker/status returns {"healthy": false}
+  - Log pattern: "broker_health.check_failed" in structured logs
+
+steps:
+  - id: "1"
+    action: Verify kill switch is active
+    command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/broker/status"
+    expected: '{"kill_switch_active": true}'
+    note: Kill switch activates automatically on 5 consecutive broker failures.
+
+  - id: "2"
+    action: Confirm no new orders are being placed
+    command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/orders?state=PENDING&limit=5"
+    expected: No orders with created_at in the last 60 seconds.
+
+  - id: "3"
+    action: Check broker status page and Kite status (external)
+    note: Visit https://kite.trade/status or broker's status page to confirm outage scope.
+
+  - id: "4"
+    action: Notify stakeholders
+    note: Post to #trading-ops Slack with outage start time, impacted symbols, estimated P&L impact.
+
+  - id: "5"
+    action: Assess open positions
+    command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/positions"
+    note: List all open positions. Determine if any require manual hedging.
+
+  - id: "6"
+    action: If positions require hedging — escalate to manual desk
+    note: >
+      Do NOT attempt to place orders through a secondary broker directly.
+      Any manual intervention must go through compliance sign-off.
+
+  - id: "7"
+    action: Monitor broker recovery
+    note: Poll GET /api/v1/broker/status every 60 seconds until healthy.
+
+  - id: "8"
+    action: Unlock trading after broker recovery
+    command: >
+      curl -X DELETE -H 'Authorization: Bearer $ADMIN_TOKEN'
+      https://api/api/v1/broker/kill-switch
+    note: Requires admin JWT. Only execute after confirming broker health.
+
+  - id: "9"
+    action: Verify reconciliation after recovery
+    command: >
+      curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN'
+      https://api/api/v1/reconciliation/trigger
+    expected: Returns run_id; check GET /api/v1/reconciliation/runs/{run_id} for COMPLETED status.
+
+  - id: "10"
+    action: Post-incident review
+    note: >
+      Document: outage duration, positions at risk, actions taken, recovery time.
+      File incident report within 24 hours.
+
+rollback: N/A — kill switch activation is the rollback.
+
+escalation:
+  - L1: On-call SRE (PagerDuty)
+  - L2: Head of Trading Technology
+  - L3: Chief Risk Officer (if open positions > ₹5L)

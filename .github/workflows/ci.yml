@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+env:
+  PYTHON_VERSION: "3.12"
+  POETRY_VERSION: "1.8.4"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: Lint & Format
+  # -------------------------------------------------------------------------
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ruff
+        run: pip install ruff==$(grep 'ruff' pyproject.toml | grep -oP '"\^?\K[0-9.]+')
+
+      - name: Check formatting
+        run: ruff format --check src/ tests/
+
+      - name: Check linting
+        run: ruff check src/ tests/
+
+      - name: Verify no print() statements in src/
+        run: |
+          if grep -rn "^\s*print(" src/; then
+            echo "ERROR: print() found in src/. Use structlog instead."
+            exit 1
+          fi
+
+      - name: Verify no .env file committed
+        run: |
+          if [ -f .env ]; then
+            echo "ERROR: .env file committed to repository."
+            exit 1
+          fi
+
+  # -------------------------------------------------------------------------
+  # Job 2: Type Check
+  # -------------------------------------------------------------------------
+  typecheck:
+    name: Type Check (mypy --strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run mypy
+        run: poetry run mypy src/ --strict
+
+  # -------------------------------------------------------------------------
+  # Job 3: Tests
+  # -------------------------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Cache Poetry virtualenv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ env.PYTHON_VERSION }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run tests with coverage
+        env:
+          ENVIRONMENT: development
+          DEBUG: "true"
+          LOG_FORMAT: console
+          LOG_LEVEL: DEBUG
+        run: |
+          poetry run pytest \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --tb=short \
+            -v
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  # -------------------------------------------------------------------------
+  # Job 4: Security Audit
+  # -------------------------------------------------------------------------
+  audit:
+    name: Security Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Install dependencies
+        run: poetry install --no-interaction
+
+      - name: Run pip-audit
+        run: poetry run pip-audit --strict
+
+  # -------------------------------------------------------------------------
+  # Job 5: Docker Build
+  # -------------------------------------------------------------------------
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t stocksignalanalyzer:ci --target runtime .
+
+      - name: Verify container runs as non-root
+        run: |
+          USER=$(docker run --rm stocksignalanalyzer:ci whoami)
+          if [ "$USER" = "root" ]; then
+            echo "ERROR: Container is running as root."
+            exit 1
+          fi
+          echo "Container user: $USER"
+
+      - name: Smoke test health endpoint
+        run: |
+          docker run -d \
+            --name ssa_smoke \
+            -p 8000:8000 \
+            -e ENVIRONMENT=development \
+            -e DEBUG=true \
+            -e LOG_FORMAT=console \
+            -e LOG_LEVEL=INFO \
+            stocksignalanalyzer:ci
+          sleep 10
+          curl --fail --retry 3 --retry-delay 2 \
+            http://localhost:8000/api/v1/health
+          docker stop ssa_smoke

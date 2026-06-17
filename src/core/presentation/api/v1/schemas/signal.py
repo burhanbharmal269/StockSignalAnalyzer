@@ -1,0 +1,39 @@
+"""Pydantic schemas for signal endpoints."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class SignalResponse(BaseModel):
+    signal_id: str
+    symbol: str
+    exchange: str
+    signal_type: str
+    strategy_type: str
+    asset_type: str
+    regime: str
+    state: str
+    confidence: float | None
+    adjusted_score: float | None
+    raw_score: float | None
+    valid_until: datetime
+    correlation_id: str
+    risk_rejection_reason: str
+    risk_profile_id: str | None
+    allocation_id: str | None
+    portfolio_id: str | None
+    capital_source_mode: str | None
+    created_at: datetime
+
+
+class SignalListResponse(BaseModel):
+    signals: list[SignalResponse]
+    total: int
+
+
+class RejectSignalRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=500)

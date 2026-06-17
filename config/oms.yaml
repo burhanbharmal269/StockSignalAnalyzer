@@ -1,0 +1,49 @@
+version: "1.0"
+
+oms:
+  # Order rate limiting
+  max_orders_per_minute: 10
+
+  # Idempotency key TTL (seconds) — covers signal_id reuse
+  idempotency_ttl_seconds: 300
+
+  # Order type selection
+  order_type:
+    default: MARKET
+    # Switch to LIMIT when option premium exceeds this value (in INR)
+    limit_threshold_premium: 500
+    # Limit price buffer: entry_zone × (1 + buffer) for BUY, × (1 - buffer) for SELL
+    limit_buffer_pct: 0.001
+
+  # Stop-loss placement
+  stop_loss:
+    # Maximum seconds allowed between primary fill and SL order placement
+    placement_deadline_seconds: 2
+
+  # Target strategy
+  target:
+    # SINGLE: close 100% at T1
+    # PARTIAL_SCALE: close 50% at T1, move stop to BE, hold 50% for T2
+    strategy: PARTIAL_SCALE
+    partial_close_pct: 0.50   # percentage of position to close at T1
+
+  # Reconciliation
+  reconciliation:
+    # Slippage warning threshold (percentage)
+    fill_price_discrepancy_pct: 0.5
+    # How often to run reconciliation during market hours (seconds)
+    schedule_interval_seconds: 300
+
+  # Paper mode fill simulation
+  paper:
+    market_slippage_pct: 0.05    # MARKET orders: fill at LTP ± 0.05%
+    sl_market_slippage_pct: 0.10 # SL_MARKET: fill at LTP when trigger breached
+
+  redis:
+    idempotency_key_prefix: "oms:idem"
+    order_cache_prefix: "oms:order"
+    position_cache_prefix: "oms:position"
+    # TTL for cached orders (seconds)
+    order_cache_ttl_seconds: 900
+    # TTL for cached positions (seconds, ~session length)
+    position_cache_ttl_seconds: 86400

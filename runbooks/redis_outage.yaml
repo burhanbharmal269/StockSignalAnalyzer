@@ -1,0 +1,92 @@
+---
+id: RB-002
+title: Redis Outage Response
+version: "1.0"
+severity: P1
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  Redis is used for: kill switch state, rate limiting, event bus (streams),
+  and session tokens. A Redis outage is treated as a KILL SWITCH ACTIVATION
+  because the kill switch FAILS CLOSED (Redis unavailable = kill switch active).
+
+trigger_conditions:
+  - Redis connection refused or timeout
+  - Kill switch service raises ConnectionError → trading halts automatically
+  - Rate limiter fails open (allows traffic) but auth tokens cannot be verified
+
+detection:
+  - Alert: "redis.connection_failed" in Grafana
+  - Log pattern: "kill_switch.redis_error" → "kill switch treated as ACTIVE"
+  - All authenticated endpoints start returning 503 (event bus down)
+
+impact:
+  - Trading: HALTED immediately (fail-closed kill switch)
+  - Event bus: No SignalRiskApproved or OrderFilled events delivered
+  - Rate limiting: Fails open (120 req/min limit unenforced)
+  - Session validation: JWT validation still works (stateless), but token
+    revocation list in Redis becomes unavailable
+
+steps:
+  - id: "1"
+    action: Confirm Redis is down
+    command: "redis-cli -h $REDIS_HOST -p $REDIS_PORT ping"
+    expected: "PONG — if this fails, Redis is down"
+
+  - id: "2"
+    action: Verify OMS is in safe state (trading halted)
+    note: >
+      Because kill switch FAILS CLOSED, no broker calls should be happening.
+      Check application logs for "kill_switch.redis_error" messages.
+
+  - id: "3"
+    action: Check Redis process on host
+    command: "systemctl status redis || docker ps | grep redis"
+    note: Is the Redis process running? Out of memory? Disk full?
+
+  - id: "4"
+    action: Check Redis memory usage (if reachable)
+    command: "redis-cli -h $REDIS_HOST info memory | grep used_memory_human"
+    note: If memory is near maxmemory, Redis may be evicting keys.
+
+  - id: "5"
+    action: Attempt Redis restart (if process crashed)
+    command: "systemctl restart redis"
+    note: Only if confirmed no data corruption. Check AOF/RDB integrity first.
+
+  - id: "6"
+    action: Verify Redis recovery
+    command: "redis-cli -h $REDIS_HOST ping && redis-cli -h $REDIS_HOST get kill_switch:global"
+    expected: "PONG\n(nil) or 0"
+
+  - id: "7"
+    action: Restart application to reconnect Redis clients
+    command: "systemctl restart stocksignal-api"
+    note: Redis connection pools in Python will not auto-reconnect in all cases.
+
+  - id: "8"
+    action: Verify kill switch state after restart
+    command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/broker/status"
+    expected: '{"kill_switch_active": false, "healthy": true}'
+
+  - id: "9"
+    action: Run reconciliation to catch any missed events
+    command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/reconciliation/trigger"
+
+  - id: "10"
+    action: Monitor for event bus replay
+    note: >
+      Redis Streams consumer groups will replay missed events from the last
+      committed offset. Verify OrderFilled events are processed by checking
+      position PnL consistency.
+
+rollback:
+  - If Redis cannot be recovered within 30 minutes: activate maintenance mode
+  - Notify all stakeholders with ETA
+  - Consider promoting Redis replica if available (requires DNS cutover)
+
+escalation:
+  - L1: On-call SRE
+  - L2: Infrastructure Lead
+  - L3: Head of Engineering

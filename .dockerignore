@@ -1,0 +1,42 @@
+# Never include secrets or dev artifacts in the image
+.env
+.env.*
+*.env
+
+# Version control
+.git/
+.github/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Testing artifacts
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Type checking / linting
+.mypy_cache/
+.ruff_cache/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

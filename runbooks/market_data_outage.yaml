@@ -1,0 +1,78 @@
+---
+id: RB-006
+title: Market Data Outage Response
+version: "1.0"
+severity: P2
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  Market data (tick feed, option chains, LTP) is consumed by signal generators.
+  A market data outage does not halt the OMS directly but will result in stale
+  signals. The risk engine will reject signals with stale entry prices.
+
+trigger_conditions:
+  - Tick feed silent for > 60 seconds during market hours (09:15–15:30 IST)
+  - Option chain API returns stale data (last_updated > 2 minutes ago)
+  - Signal generator emits zero signals for > 5 minutes during market hours
+
+detection:
+  - Alert: "market_data.feed_silent" in Grafana
+  - Log pattern: "signal_generator.no_data" or "data_staleness_exceeded"
+  - Metric: signals_generated_total counter flat for > 5 minutes
+
+impact:
+  - New signals: NOT generated (no market data = no signal triggers)
+  - Existing open positions: Unaffected (managed by OMS, not market data)
+  - Risk engine: May reject signals with stale prices if they somehow arrive
+  - Kill switch: NOT affected (independent of market data)
+
+steps:
+  - id: "1"
+    action: Confirm market data feed status
+    note: Check broker's data feed status page and Kite WebSocket connection logs.
+
+  - id: "2"
+    action: Check for NSE/BSE exchange issues
+    note: >
+      Visit NSE India website (nseindia.com) for exchange announcements.
+      Market data issues often originate at the exchange level.
+
+  - id: "3"
+    action: Verify signal generator process is running
+    command: "systemctl status stocksignal-signal-generator"
+
+  - id: "4"
+    action: Check data feed reconnection logic
+    note: >
+      WebSocket feeds auto-reconnect. Check logs for reconnection attempts.
+      Log pattern: "data_feed.reconnecting" should appear within 30 seconds.
+
+  - id: "5"
+    action: If feed does not recover within 5 minutes, restart signal generator
+    command: "systemctl restart stocksignal-signal-generator"
+
+  - id: "6"
+    action: If NSE circuit breaker or market halt
+    note: >
+      NSE halts trading under extraordinary circumstances. No action needed —
+      OMS will naturally receive no signals. Monitor for market resumption.
+
+  - id: "7"
+    action: Assess existing positions if market data is unavailable near close
+    note: >
+      If market data is unavailable within 30 minutes of market close (15:00 IST),
+      review open positions manually through the broker portal.
+      Consider manual exit if positions are at risk.
+
+  - id: "8"
+    action: Document the outage window
+    note: Log start/end time of data outage in the incident log.
+
+no_action_needed:
+  - Brief data gaps < 30 seconds (normal market microstructure)
+  - Pre-market (before 09:00 IST) or post-market (after 15:30 IST) feed issues
+
+escalation:
+  - L1: On-call SRE
+  - L2: Head of Trading (if outage > 15 minutes during market hours)

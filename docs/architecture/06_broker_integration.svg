@@ -1,0 +1,347 @@
+<svg viewBox="0 0 1600 1020" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI',Arial,sans-serif">
+<defs>
+  <marker id="arr" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#475569"/>
+  </marker>
+  <marker id="arrB" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#3b82f6"/>
+  </marker>
+  <marker id="arrG" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#22c55e"/>
+  </marker>
+  <marker id="arrO" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#fb923c"/>
+  </marker>
+  <marker id="arrC" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#06b6d4"/>
+  </marker>
+  <marker id="arrW" markerWidth="9" markerHeight="7" refX="8" refY="3.5" orient="auto">
+    <polygon points="0 0,9 3.5,0 7" fill="#94a3b8"/>
+  </marker>
+</defs>
+
+<rect width="1600" height="1020" fill="#0d1117"/>
+
+<!-- Title -->
+<text x="800" y="36" text-anchor="middle" fill="#e2e8f0" font-size="20" font-weight="700">Broker Integration Architecture — Adapter Pattern</text>
+<text x="800" y="56" text-anchor="middle" fill="#64748b" font-size="12">IBroker + IDataProvider interfaces · Dependency Inversion · Current: Zerodha Kite · Future: Angel, Dhan, Fyers, Groww, Upstox</text>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- COLUMN 1: APPLICATION CONSUMERS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<rect x="20" y="75" width="220" height="22" rx="4" fill="#1e2530"/>
+<text x="130" y="91" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">APPLICATION LAYER</text>
+
+<rect x="20" y="103" width="220" height="70" rx="8" fill="#1a2030" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="130" y="125" text-anchor="middle" fill="#a5f3fc" font-size="12" font-weight="600">OMS</text>
+<text x="130" y="143" text-anchor="middle" fill="#64748b" font-size="10">place_order · cancel_order</text>
+<text x="130" y="159" text-anchor="middle" fill="#64748b" font-size="10">modify_order · get_orders</text>
+
+<rect x="20" y="188" width="220" height="60" rx="8" fill="#1a2030" stroke="#06b6d4" stroke-width="1.5"/>
+<text x="130" y="210" text-anchor="middle" fill="#a5f3fc" font-size="12" font-weight="600">Position Service</text>
+<text x="130" y="228" text-anchor="middle" fill="#64748b" font-size="10">get_positions · get_trades</text>
+<text x="130" y="244" text-anchor="middle" fill="#64748b" font-size="10">get_holdings · get_margins</text>
+
+<rect x="20" y="263" width="220" height="60" rx="8" fill="#1a2030" stroke="#22c55e" stroke-width="1.5"/>
+<text x="130" y="285" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Market Data Service</text>
+<text x="130" y="303" text-anchor="middle" fill="#64748b" font-size="10">get_quote · get_historical</text>
+<text x="130" y="319" text-anchor="middle" fill="#64748b" font-size="10">subscribe_ticks · unsubscribe</text>
+
+<rect x="20" y="338" width="220" height="60" rx="8" fill="#1a2030" stroke="#22c55e" stroke-width="1.5"/>
+<text x="130" y="360" text-anchor="middle" fill="#86efac" font-size="12" font-weight="600">Instrument Master Svc</text>
+<text x="130" y="378" text-anchor="middle" fill="#64748b" font-size="10">get_instruments (CSV download)</text>
+<text x="130" y="394" text-anchor="middle" fill="#64748b" font-size="10">IDataProvider.fetch_instruments()</text>
+
+<rect x="20" y="413" width="220" height="60" rx="8" fill="#1a2030" stroke="#a855f7" stroke-width="1.5"/>
+<text x="130" y="435" text-anchor="middle" fill="#d8b4fe" font-size="12" font-weight="600">WebSocket Manager</text>
+<text x="130" y="453" text-anchor="middle" fill="#64748b" font-size="10">IWebSocketManager</text>
+<text x="130" y="469" text-anchor="middle" fill="#64748b" font-size="10">connect · subscribe · on_tick</text>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- COLUMN 2: DOMAIN INTERFACES -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<rect x="300" y="75" width="370" height="22" rx="4" fill="#1e2a10"/>
+<text x="485" y="91" text-anchor="middle" fill="#4ade80" font-size="11" font-weight="600">DOMAIN INTERFACES  (Pure Abstractions — Domain Layer)</text>
+
+<!-- IBroker Interface -->
+<rect x="300" y="103" width="370" height="390" rx="10" fill="#0f1a10" stroke="#22c55e" stroke-width="2"/>
+<rect x="300" y="103" width="370" height="32" rx="10" fill="#14301e"/>
+<rect x="300" y="127" width="370" height="8" fill="#14301e"/>
+<text x="485" y="124" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">«interface»  IBroker</text>
+
+<text x="315" y="155" fill="#64748b" font-size="10">— Order Operations —</text>
+<text x="315" y="172" fill="#a7f3d0" font-size="11">place_order(order: OrderRequest) → str</text>
+<text x="315" y="189" fill="#a7f3d0" font-size="11">cancel_order(order_id: str) → bool</text>
+<text x="315" y="206" fill="#a7f3d0" font-size="11">modify_order(order_id: str, qty, price) → bool</text>
+
+<text x="315" y="228" fill="#64748b" font-size="10">— Order/Trade State —</text>
+<text x="315" y="245" fill="#a7f3d0" font-size="11">get_order(order_id: str) → BrokerOrder</text>
+<text x="315" y="262" fill="#a7f3d0" font-size="11">get_orders() → list[BrokerOrder]</text>
+<text x="315" y="279" fill="#a7f3d0" font-size="11">get_trades() → list[BrokerTrade]</text>
+
+<text x="315" y="301" fill="#64748b" font-size="10">— Portfolio / Margin —</text>
+<text x="315" y="318" fill="#a7f3d0" font-size="11">get_positions() → list[BrokerPosition]</text>
+<text x="315" y="335" fill="#a7f3d0" font-size="11">get_holdings() → list[BrokerHolding]</text>
+<text x="315" y="352" fill="#a7f3d0" font-size="11">get_margins() → MarginResponse</text>
+<text x="315" y="369" fill="#a7f3d0" font-size="11">get_margin_required(instr, qty) → Decimal</text>
+
+<text x="315" y="391" fill="#64748b" font-size="10">— Domain Model Conversion —</text>
+<text x="315" y="408" fill="#a7f3d0" font-size="11">normalize_order_type(OrderType) → str</text>
+<text x="315" y="425" fill="#a7f3d0" font-size="11">normalize_product_type(ProductType) → str</text>
+<text x="315" y="442" fill="#a7f3d0" font-size="11">normalize_exchange(Exchange) → str</text>
+<text x="315" y="459" fill="#6b7280" font-size="10" font-style="italic">All methods are async · Return domain models · No broker-specific types leaked</text>
+<text x="315" y="474" fill="#6b7280" font-size="10" font-style="italic">Raises: BrokerConnectionError, BrokerAuthError, InsufficientMarginError</text>
+
+<!-- IDataProvider Interface -->
+<rect x="300" y="510" width="370" height="250" rx="10" fill="#0f1015" stroke="#3b82f6" stroke-width="2"/>
+<rect x="300" y="510" width="370" height="32" rx="10" fill="#1e3050"/>
+<rect x="300" y="534" width="370" height="8" fill="#1e3050"/>
+<text x="485" y="531" text-anchor="middle" fill="#93c5fd" font-size="14" font-weight="700">«interface»  IDataProvider</text>
+
+<text x="315" y="558" fill="#64748b" font-size="10">— Quotes —</text>
+<text x="315" y="575" fill="#93c5fd" font-size="11">get_quote(instruments: list[str]) → dict</text>
+<text x="315" y="592" fill="#93c5fd" font-size="11">get_option_chain(symbol, expiry) → OptionChain</text>
+
+<text x="315" y="614" fill="#64748b" font-size="10">— Historical —</text>
+<text x="315" y="631" fill="#93c5fd" font-size="11">get_historical_data(instr, from, to, interval) → list[OHLCV]</text>
+
+<text x="315" y="653" fill="#64748b" font-size="10">— Instrument Master —</text>
+<text x="315" y="670" fill="#93c5fd" font-size="11">fetch_instruments(exchange) → list[Instrument]</text>
+<text x="315" y="687" fill="#93c5fd" font-size="11">get_instrument_token(symbol, exchange) → str</text>
+
+<text x="315" y="709" fill="#64748b" font-size="10">— WebSocket —</text>
+<text x="315" y="726" fill="#93c5fd" font-size="11">create_websocket_connection() → IWebSocketManager</text>
+<text x="315" y="743" fill="#6b7280" font-size="10" font-style="italic">Returns standardized domain types · Exchange-agnostic field names</text>
+
+<!-- IWebSocketManager Interface -->
+<rect x="300" y="775" width="370" height="165" rx="10" fill="#150f20" stroke="#a855f7" stroke-width="2"/>
+<rect x="300" y="775" width="370" height="32" rx="10" fill="#2d1050"/>
+<rect x="300" y="799" width="370" height="8" fill="#2d1050"/>
+<text x="485" y="796" text-anchor="middle" fill="#d8b4fe" font-size="14" font-weight="700">«interface»  IWebSocketManager</text>
+<text x="315" y="820" fill="#d8b4fe" font-size="11">connect() → None</text>
+<text x="315" y="837" fill="#d8b4fe" font-size="11">subscribe(tokens: list[int]) → None</text>
+<text x="315" y="854" fill="#d8b4fe" font-size="11">unsubscribe(tokens: list[int]) → None</text>
+<text x="315" y="871" fill="#d8b4fe" font-size="11">on_tick(callback: Callable[[TickEvent], None]) → None</text>
+<text x="315" y="888" fill="#d8b4fe" font-size="11">on_disconnect(callback: Callable) → None</text>
+<text x="315" y="905" fill="#d8b4fe" font-size="11">disconnect() → None</text>
+<text x="315" y="922" fill="#6b7280" font-size="10" font-style="italic">State: DISCONNECTED / CONNECTING / CONNECTED / FAILED</text>
+<text x="315" y="937" fill="#6b7280" font-size="10" font-style="italic">Auto-reconnect with exponential backoff · Max 3000 instruments</text>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- COLUMN 3: CONCRETE IMPLEMENTATIONS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<rect x="730" y="75" width="370" height="22" rx="4" fill="#1e2a10"/>
+<text x="915" y="91" text-anchor="middle" fill="#f59e0b" font-size="11" font-weight="600">CONCRETE ADAPTERS  (Infrastructure Layer)</text>
+
+<!-- KiteBroker -->
+<rect x="730" y="103" width="370" height="390" rx="10" fill="#1e200f" stroke="#f59e0b" stroke-width="2"/>
+<rect x="730" y="103" width="370" height="32" rx="10" fill="#2a2800"/>
+<rect x="730" y="127" width="370" height="8" fill="#2a2800"/>
+<text x="915" y="124" text-anchor="middle" fill="#fde68a" font-size="14" font-weight="700">KiteBroker  (implements IBroker)</text>
+
+<text x="745" y="152" fill="#64748b" font-size="10">— Zerodha Kite Connect v3 —</text>
+<text x="745" y="168" fill="#fde68a" font-size="11">kite: KiteConnect  (injected, not inherited)</text>
+<text x="745" y="185" fill="#fde68a" font-size="11">session: BrokerSession</text>
+<text x="745" y="202" fill="#fde68a" font-size="11">_token_refresh_task: asyncio.Task</text>
+
+<text x="745" y="224" fill="#64748b" font-size="10">— Key Mappings —</text>
+<text x="745" y="241" fill="#fbbf24" font-size="10">INTRADAY → product="MIS"</text>
+<text x="745" y="257" fill="#fbbf24" font-size="10">OVERNIGHT → product="NRML"</text>
+<text x="745" y="273" fill="#fbbf24" font-size="10">MARKET/LIMIT/SL/SL-M → order_type</text>
+<text x="745" y="289" fill="#fbbf24" font-size="10">NFO segment = Exchange.NSE_FO</text>
+
+<text x="745" y="311" fill="#64748b" font-size="10">— Error Handling —</text>
+<text x="745" y="328" fill="#fbbf24" font-size="10">InputException → OrderValidationError</text>
+<text x="745" y="344" fill="#fbbf24" font-size="10">TokenException → BrokerAuthError</text>
+<text x="745" y="360" fill="#fbbf24" font-size="10">NetworkException → BrokerConnectionError</text>
+<text x="745" y="376" fill="#fbbf24" font-size="10">GeneralException → BrokerError</text>
+
+<text x="745" y="398" fill="#64748b" font-size="10">— Lifecycle —</text>
+<text x="745" y="415" fill="#fbbf24" font-size="10">Access token: daily, encrypted at rest (AES-256)</text>
+<text x="745" y="431" fill="#fbbf24" font-size="10">Request token: OAuth flow via /api/v1/auth/callback</text>
+<text x="745" y="448" fill="#fbbf24" font-size="10">Rate limit: 3 req/sec enforced by throttle decorator</text>
+<text x="745" y="464" fill="#fbbf24" font-size="10">Retry: 3 attempts on NetworkException (1s/2s/4s)</text>
+<text x="745" y="480" fill="#6b7280" font-size="10" font-style="italic">Does NOT inherit KiteConnect — composition only</text>
+
+<!-- KiteDataProvider -->
+<rect x="730" y="510" width="370" height="250" rx="10" fill="#101520" stroke="#3b82f6" stroke-width="2"/>
+<rect x="730" y="510" width="370" height="32" rx="10" fill="#1e3050"/>
+<rect x="730" y="534" width="370" height="8" fill="#1e3050"/>
+<text x="915" y="531" text-anchor="middle" fill="#93c5fd" font-size="14" font-weight="700">KiteDataProvider  (implements IDataProvider)</text>
+<text x="745" y="555" fill="#93c5fd" font-size="11">Uses kite.historical_data() → mapped to OHLCV</text>
+<text x="745" y="572" fill="#93c5fd" font-size="11">Uses kite.instruments() CSV → list[Instrument]</text>
+<text x="745" y="589" fill="#93c5fd" font-size="11">Interval map: 1m/3m/5m/15m/30m/60m/day/week/month</text>
+<text x="745" y="620" fill="#64748b" font-size="10">— Option Chain —</text>
+<text x="745" y="637" fill="#93c5fd" font-size="11">Hybrid: WS per-strike LTP + REST full chain 60s</text>
+<text x="745" y="654" fill="#93c5fd" font-size="11">iv/greeks: computed via Black-Scholes (not from Kite)</text>
+<text x="745" y="671" fill="#93c5fd" font-size="11">OI / volume: from tick stream via Redis cache</text>
+<text x="745" y="700" fill="#64748b" font-size="10">— NSEProvider (supplemental) —</text>
+<text x="745" y="717" fill="#93c5fd" font-size="11">get_option_chain() → scrapes NSE JSON API (fallback)</text>
+<text x="745" y="734" fill="#93c5fd" font-size="11">get_market_status() → NSE trading calendar</text>
+<text x="745" y="751" fill="#6b7280" font-size="10" font-style="italic">NSEProvider caches at Redis · TTL 60s · No auth required</text>
+
+<!-- KiteWebSocketManager -->
+<rect x="730" y="775" width="370" height="165" rx="10" fill="#150f20" stroke="#a855f7" stroke-width="2"/>
+<rect x="730" y="775" width="370" height="32" rx="10" fill="#2d1050"/>
+<rect x="730" y="799" width="370" height="8" fill="#2d1050"/>
+<text x="915" y="796" text-anchor="middle" fill="#d8b4fe" font-size="14" font-weight="700">KiteWebSocketManager  (implements IWebSocketManager)</text>
+<text x="745" y="820" fill="#d8b4fe" font-size="11">kite_ticker: KiteTicker (zerodha library)</text>
+<text x="745" y="837" fill="#d8b4fe" font-size="11">Mode: QUOTE (LTP+depth) or FULL (OI+volume)</text>
+<text x="745" y="854" fill="#d8b4fe" font-size="11">Limit: 3000 instruments per connection</text>
+<text x="745" y="871" fill="#d8b4fe" font-size="11">Ping interval: 3s · Stale tick timeout: 10s</text>
+<text x="745" y="888" fill="#d8b4fe" font-size="11">Reconnect: exp backoff 1→2→4→8→16s · max 5 attempts</text>
+<text x="745" y="905" fill="#d8b4fe" font-size="11">Publishes TickEvent to market_data.tick stream</text>
+<text x="745" y="922" fill="#6b7280" font-size="10" font-style="italic">Binary frame decode: struct.unpack_from() for Kite packet format</text>
+<text x="745" y="937" fill="#6b7280" font-size="10" font-style="italic">Prices stored as Decimal (not float) to avoid rounding errors</text>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- COLUMN 4: EXTERNAL APIs -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<rect x="1160" y="75" width="200" height="22" rx="4" fill="#1e2530"/>
+<text x="1260" y="91" text-anchor="middle" fill="#64748b" font-size="11" font-weight="600">EXTERNAL APIs</text>
+
+<rect x="1160" y="103" width="200" height="390" rx="10" fill="#1e2030" stroke="#fb923c" stroke-width="1.5"/>
+<rect x="1160" y="103" width="200" height="32" rx="10" fill="#2a1800"/>
+<rect x="1160" y="127" width="200" height="8" fill="#2a1800"/>
+<text x="1260" y="124" text-anchor="middle" fill="#fdba74" font-size="12" font-weight="700">Kite Connect REST</text>
+<text x="1175" y="148" fill="#64748b" font-size="10">v3 · HTTPS · JSON</text>
+<text x="1175" y="165" fill="#fb923c" font-size="10">POST /orders/{variety}</text>
+<text x="1175" y="182" fill="#fb923c" font-size="10">DELETE /orders/{variety}/{id}</text>
+<text x="1175" y="199" fill="#fb923c" font-size="10">PUT /orders/{variety}/{id}</text>
+<text x="1175" y="216" fill="#fb923c" font-size="10">GET /orders</text>
+<text x="1175" y="233" fill="#fb923c" font-size="10">GET /trades</text>
+<text x="1175" y="250" fill="#fb923c" font-size="10">GET /portfolio/positions</text>
+<text x="1175" y="267" fill="#fb923c" font-size="10">GET /instruments</text>
+<text x="1175" y="284" fill="#fb923c" font-size="10">GET /margins/{segment}</text>
+<text x="1175" y="301" fill="#fb923c" font-size="10">GET /quote</text>
+<text x="1175" y="318" fill="#fb923c" font-size="10">GET /historical_data/{token}</text>
+<text x="1175" y="345" fill="#64748b" font-size="9">Rate limit: 3 req/sec</text>
+<text x="1175" y="360" fill="#64748b" font-size="9">Auth: X-Kite-Version: 3</text>
+<text x="1175" y="375" fill="#64748b" font-size="9">Authorization: token {api_key}:{access_token}</text>
+<text x="1175" y="390" fill="#64748b" font-size="9">Sandbox: available for testing</text>
+<text x="1175" y="408" fill="#64748b" font-size="9">Base: https://api.kite.trade</text>
+<text x="1175" y="424" fill="#64748b" font-size="9">OAuth URL: https://kite.trade/connect/login</text>
+<text x="1175" y="442" fill="#64748b" font-size="9">Session URL: https://api.kite.trade/session/token</text>
+<text x="1175" y="475" fill="#64748b" font-size="9">P99 latency target: &lt; 500ms</text>
+
+<rect x="1160" y="510" width="200" height="120" rx="10" fill="#1e2030" stroke="#a855f7" stroke-width="1.5"/>
+<rect x="1160" y="510" width="200" height="32" rx="10" fill="#2d1050"/>
+<rect x="1160" y="534" width="200" height="8" fill="#2d1050"/>
+<text x="1260" y="531" text-anchor="middle" fill="#d8b4fe" font-size="12" font-weight="700">Kite WebSocket</text>
+<text x="1175" y="553" fill="#64748b" font-size="10">wss://ws.kite.trade/</text>
+<text x="1175" y="570" fill="#d8b4fe" font-size="10">Binary tick stream</text>
+<text x="1175" y="587" fill="#d8b4fe" font-size="10">Mode: LTP / Quote / Full</text>
+<text x="1175" y="604" fill="#d8b4fe" font-size="10">Max: 3000 tokens/conn</text>
+<text x="1175" y="621" fill="#64748b" font-size="9">Ping/pong: 3s</text>
+
+<rect x="1160" y="648" width="200" height="100" rx="10" fill="#1e2030" stroke="#3b82f6" stroke-width="1.5"/>
+<rect x="1160" y="648" width="200" height="32" rx="10" fill="#1e3050"/>
+<rect x="1160" y="672" width="200" height="8" fill="#1e3050"/>
+<text x="1260" y="669" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="700">NSE Data API</text>
+<text x="1175" y="692" fill="#64748b" font-size="10">www.nseindia.com</text>
+<text x="1175" y="709" fill="#93c5fd" font-size="10">Option chain JSON</text>
+<text x="1175" y="726" fill="#93c5fd" font-size="10">Holiday calendar</text>
+<text x="1175" y="743" fill="#64748b" font-size="9">Public · No auth · Rate limited</text>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- FUTURE BROKERS -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<rect x="20" y="515" width="1120" height="22" rx="4" fill="#161b22"/>
+<text x="580" y="531" text-anchor="middle" fill="#374151" font-size="11" font-weight="600">FUTURE IMPLEMENTATIONS  (Phase 3+  — grayed out, not yet built)</text>
+
+<rect x="20" y="544" width="160" height="80" rx="8" fill="#161b22" stroke="#374151" stroke-width="1" stroke-dasharray="5,4"/>
+<text x="100" y="566" text-anchor="middle" fill="#4b5563" font-size="11" font-weight="600">AngelBroker</text>
+<text x="100" y="583" text-anchor="middle" fill="#374151" font-size="10">Angel One SmartAPI</text>
+<text x="100" y="599" text-anchor="middle" fill="#374151" font-size="10">implements IBroker</text>
+<text x="100" y="616" text-anchor="middle" fill="#374151" font-size="10">+ IDataProvider</text>
+
+<rect x="200" y="544" width="160" height="80" rx="8" fill="#161b22" stroke="#374151" stroke-width="1" stroke-dasharray="5,4"/>
+<text x="280" y="566" text-anchor="middle" fill="#4b5563" font-size="11" font-weight="600">DhanBroker</text>
+<text x="280" y="583" text-anchor="middle" fill="#374151" font-size="10">Dhan HQ API v2</text>
+<text x="280" y="599" text-anchor="middle" fill="#374151" font-size="10">implements IBroker</text>
+<text x="280" y="616" text-anchor="middle" fill="#374151" font-size="10">+ IDataProvider</text>
+
+<rect x="380" y="544" width="160" height="80" rx="8" fill="#161b22" stroke="#374151" stroke-width="1" stroke-dasharray="5,4"/>
+<text x="460" y="566" text-anchor="middle" fill="#4b5563" font-size="11" font-weight="600">FyersBroker</text>
+<text x="460" y="583" text-anchor="middle" fill="#374151" font-size="10">Fyers API v3</text>
+<text x="460" y="599" text-anchor="middle" fill="#374151" font-size="10">implements IBroker</text>
+<text x="460" y="616" text-anchor="middle" fill="#374151" font-size="10">+ IDataProvider</text>
+
+<rect x="560" y="544" width="160" height="80" rx="8" fill="#161b22" stroke="#374151" stroke-width="1" stroke-dasharray="5,4"/>
+<text x="640" y="566" text-anchor="middle" fill="#4b5563" font-size="11" font-weight="600">UpstoxBroker</text>
+<text x="640" y="583" text-anchor="middle" fill="#374151" font-size="10">Upstox API v2</text>
+<text x="640" y="599" text-anchor="middle" fill="#374151" font-size="10">implements IBroker</text>
+<text x="640" y="616" text-anchor="middle" fill="#374151" font-size="10">+ IDataProvider</text>
+
+<rect x="740" y="544" width="160" height="80" rx="8" fill="#161b22" stroke="#374151" stroke-width="1" stroke-dasharray="5,4"/>
+<text x="820" y="566" text-anchor="middle" fill="#4b5563" font-size="11" font-weight="600">GrowwBroker</text>
+<text x="820" y="583" text-anchor="middle" fill="#374151" font-size="10">Groww API</text>
+<text x="820" y="599" text-anchor="middle" fill="#374151" font-size="10">implements IBroker</text>
+<text x="820" y="616" text-anchor="middle" fill="#374151" font-size="10">+ IDataProvider</text>
+
+<rect x="920" y="544" width="200" height="80" rx="8" fill="#161b22" stroke="#374151" stroke-width="1" stroke-dasharray="5,4"/>
+<text x="1020" y="566" text-anchor="middle" fill="#4b5563" font-size="11" font-weight="600">PaperBroker  (Simulation)</text>
+<text x="1020" y="583" text-anchor="middle" fill="#374151" font-size="10">In-memory order matching</text>
+<text x="1020" y="599" text-anchor="middle" fill="#374151" font-size="10">implements IBroker</text>
+<text x="1020" y="616" text-anchor="middle" fill="#374151" font-size="10">For backtesting / paper mode</text>
+
+<!-- ARROWS -->
+<!-- App → Interface -->
+<line x1="240" y1="138" x2="300" y2="240" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="240" y1="218" x2="300" y2="280" stroke="#06b6d4" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="240" y1="293" x2="300" y2="593" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="240" y1="343" x2="300" y2="620" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arr)"/>
+<line x1="240" y1="443" x2="300" y2="820" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arr)"/>
+
+<!-- Interface → Implementation -->
+<line x1="670" y1="200" x2="730" y2="200" stroke="#22c55e" stroke-width="2" marker-end="url(#arrG)"/>
+<line x1="670" y1="600" x2="730" y2="600" stroke="#3b82f6" stroke-width="2" marker-end="url(#arrB)"/>
+<line x1="670" y1="850" x2="730" y2="850" stroke="#a855f7" stroke-width="2"/>
+
+<!-- Implementation → External -->
+<line x1="1100" y1="200" x2="1160" y2="280" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrO)"/>
+<line x1="1100" y1="600" x2="1160" y2="560" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrB)"/>
+<line x1="1100" y1="620" x2="1160" y2="690" stroke="#3b82f6" stroke-width="1.5" marker-end="url(#arrB)"/>
+<line x1="1100" y1="850" x2="1160" y2="570" stroke="#a855f7" stroke-width="1.5" marker-end="url(#arrC)"/>
+
+<!-- Interface labels on arrows -->
+<text x="700" y="190" text-anchor="middle" fill="#22c55e" font-size="10">«implements»</text>
+<text x="700" y="590" text-anchor="middle" fill="#3b82f6" font-size="10">«implements»</text>
+
+<!-- DI Container Note -->
+<rect x="1400" y="75" width="185" height="490" rx="10" fill="#161b22" stroke="#475569" stroke-width="1"/>
+<text x="1493" y="96" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="700">DI Container</text>
+<text x="1493" y="113" text-anchor="middle" fill="#64748b" font-size="10">Wire-up (settings.yaml)</text>
+<text x="1415" y="135" fill="#4ade80" font-size="10">broker_type: "kite"</text>
+<text x="1415" y="152" fill="#4ade80" font-size="10"># Switch to change all of:</text>
+<text x="1415" y="168" fill="#22c55e" font-size="10">IBroker → KiteBroker</text>
+<text x="1415" y="185" fill="#22c55e" font-size="10">IDataProvider → KiteDataProvider</text>
+<text x="1415" y="202" fill="#22c55e" font-size="10">IWebSocketManager → KiteWSMgr</text>
+<line x1="1410" y1="215" x2="1575" y2="215" stroke="#374151" stroke-width="0.5"/>
+<text x="1493" y="232" text-anchor="middle" fill="#64748b" font-size="10">Forbidden Injections</text>
+<text x="1415" y="249" fill="#ef4444" font-size="10">✗ IAIProvider → OMS</text>
+<text x="1415" y="265" fill="#ef4444" font-size="10">✗ IAIProvider → RiskEngine</text>
+<text x="1415" y="281" fill="#ef4444" font-size="10">✗ IBroker → Domain entities</text>
+<text x="1415" y="297" fill="#ef4444" font-size="10">✗ IBroker → Signal engine</text>
+<line x1="1410" y1="310" x2="1575" y2="310" stroke="#374151" stroke-width="0.5"/>
+<text x="1493" y="327" text-anchor="middle" fill="#64748b" font-size="10">Config-driven broker switch</text>
+<text x="1415" y="343" fill="#94a3b8" font-size="10">No code changes needed</text>
+<text x="1415" y="359" fill="#94a3b8" font-size="10">to add a new broker adapter</text>
+<text x="1415" y="375" fill="#94a3b8" font-size="10">Only: implement interface</text>
+<text x="1415" y="391" fill="#94a3b8" font-size="10">Register in DI container</text>
+<text x="1415" y="407" fill="#94a3b8" font-size="10">Add to settings.yaml</text>
+<line x1="1410" y1="420" x2="1575" y2="420" stroke="#374151" stroke-width="0.5"/>
+<text x="1493" y="437" text-anchor="middle" fill="#64748b" font-size="10">Testing</text>
+<text x="1415" y="453" fill="#94a3b8" font-size="10">MockBroker → unit tests</text>
+<text x="1415" y="469" fill="#94a3b8" font-size="10">PaperBroker → integration</text>
+<text x="1415" y="485" fill="#94a3b8" font-size="10">KiteBroker → staging/prod</text>
+<text x="1415" y="501" fill="#94a3b8" font-size="10">No live orders in unit tests</text>
+<text x="1415" y="517" fill="#94a3b8" font-size="10">ever — this rule is enforced</text>
+<text x="1415" y="533" fill="#94a3b8" font-size="10">at config load time</text>
+
+<!-- LEGEND / FOOTER -->
+<rect x="20" y="645" width="1100" height="60" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="580" y="666" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="700">Architectural Guarantee: Zero Broker-Specific Symbols in Domain Layer</text>
+<text x="580" y="683" text-anchor="middle" fill="#64748b" font-size="11">Domain only sees IBroker, IDataProvider, IWebSocketManager interfaces · All Kite-specific types (kiteconnect.Order etc.) are confined to the Infrastructure adapter · BrokerOrder, BrokerPosition, MarginResponse are domain value objects</text>
+<text x="580" y="698" text-anchor="middle" fill="#64748b" font-size="11">Access token encrypted at rest using app-level AES-256; key stored outside database in environment/vault · Never logged, never returned via API</text>
+</svg>

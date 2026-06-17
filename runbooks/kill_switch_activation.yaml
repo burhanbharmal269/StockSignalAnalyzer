@@ -1,0 +1,92 @@
+---
+id: RB-004
+title: Kill Switch Activation & Deactivation
+version: "1.0"
+severity: P1
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  The kill switch is the primary safety mechanism to halt all trading activity
+  immediately. It is checked before every broker call. The system FAILS CLOSED:
+  if the kill switch state cannot be read (Redis unavailable), trading halts.
+
+activation_triggers:
+  automatic:
+    - AutoKillSwitchService: 5 consecutive broker failures
+    - LiveTradingSafetyService: win_rate < 40% OR drawdown > 10% OR 5 consecutive losses
+    - Redis unavailable (fail-closed behavior)
+  manual:
+    - POST /api/v1/broker/kill-switch (admin JWT required)
+    - Direct Redis SET: redis-cli SET kill_switch:global 1
+
+deactivation_requires:
+  - Root cause identified and documented
+  - Admin JWT from authorized operator
+  - Reconciliation run completed
+  - Verbal approval from Head of Trading (during market hours)
+
+manual_activation_steps:
+  - id: "1"
+    action: Activate kill switch via API
+    command: >
+      curl -X POST
+      -H 'Authorization: Bearer $ADMIN_TOKEN'
+      -H 'Content-Type: application/json'
+      https://api/api/v1/broker/kill-switch
+    expected: '{"status": "activated", "kill_switch_active": true}'
+
+  - id: "2"
+    action: Verify no new orders are being routed
+    command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/orders?state=PENDING&limit=10"
+    note: No orders should have created_at within the last 10 seconds.
+
+  - id: "3"
+    action: Log activation with reason
+    note: >
+      Record in incident log: timestamp, operator name, reason for activation,
+      open positions at time of activation.
+
+deactivation_steps:
+  - id: "1"
+    action: Confirm root cause is resolved
+    note: Broker healthy, Redis reachable, DB available, no risk breaches.
+
+  - id: "2"
+    action: Run pre-deactivation reconciliation
+    command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/reconciliation/trigger"
+    expected: Reconciliation completes with 0 unrepaired discrepancies.
+
+  - id: "3"
+    action: Deactivate kill switch
+    command: >
+      curl -X DELETE
+      -H 'Authorization: Bearer $ADMIN_TOKEN'
+      https://api/api/v1/broker/kill-switch
+    expected: '{"status": "deactivated", "kill_switch_active": false}'
+
+  - id: "4"
+    action: Place test order (paper mode only)
+    note: Verify end-to-end pipeline is healthy with a single low-value test signal.
+
+  - id: "5"
+    action: Monitor for 5 minutes
+    note: Watch broker health, error rates, and order fill latency in Grafana.
+
+emergency_direct_redis:
+  description: "Use ONLY if API is unreachable"
+  activate: "redis-cli SET kill_switch:global 1"
+  deactivate: "redis-cli DEL kill_switch:global"
+  warning: >
+    Direct Redis manipulation bypasses audit logging. Always follow up
+    with API-level action as soon as the API is reachable.
+
+audit_requirement: >
+  Every kill switch activation and deactivation MUST be logged in the
+  audit trail. The API endpoints log automatically. Direct Redis
+  manipulation must be manually entered in the incident log.
+
+escalation:
+  - L1: On-call trader
+  - L2: Head of Trading
+  - L3: Chief Risk Officer

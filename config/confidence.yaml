@@ -1,0 +1,139 @@
+version: "1.0"
+
+# Base Confidence: min(ceiling, adjusted_score × score_multiplier)
+base:
+  ceiling: 60
+  score_multiplier: 0.60
+
+# Win Rate Adjustment — source: signal_performance_stats
+# Filtered by regime + direction + instrument_class, last lookback_days
+win_rate:
+  lookback_days: 90
+  min_signals: 20
+  threshold_high: 65.0          # win_rate > 65% → adj_high
+  adj_high: 10
+  threshold_mid: 55.0           # 55–65% → adj_mid
+  adj_mid: 5
+  threshold_low: 45.0           # 45–55% → adj_low (0)
+  adj_low: 0
+  adj_below_low: -8             # < 45% → -8
+
+# Regime Alignment Adjustment
+regime_alignment:
+  adj_aligned: 8                # signal direction matches regime direction
+  adj_misaligned: -20           # signal direction opposes regime direction
+  adj_neutral: 0                # HIGH_VOLATILITY, LOW_VOLATILITY, SIDEWAYS
+
+# Data Quality Adjustment — 3-part composite (AD-3)
+# composite = sq_score×weight_score_quality + completeness×weight_data_completeness + freshness_score×weight_data_freshness
+data_quality:
+  # Composite weights (must sum to 1.0; configurable per AD-3)
+  weight_score_quality: 0.40
+  weight_data_completeness: 0.40
+  weight_data_freshness: 0.20
+  # score_quality → sub-score mapping (0–100)
+  score_quality_scores:
+    HIGH: 100
+    MEDIUM: 70
+    LOW: 40
+    INSUFFICIENT: 0
+  # Freshness sub-score: deduction points from 100
+  staleness_mild_min_seconds: 120   # data 120–300s old: mild deduction
+  staleness_mild_max_seconds: 300
+  staleness_mild_pts: 10            # per stale component (mild)
+  staleness_severe_pts: 20          # per stale component (> 300s)
+  staleness_cap_pts: 40             # max freshness deduction total
+  option_chain_missing_pts: 30      # if OPTION_CHAIN + IV_ANALYSIS both absent
+  oi_grace_seconds: 300             # OI data structurally delayed; exempt within grace
+  # Composite score thresholds → final adjustment
+  threshold_high: 80.0              # composite >= 80 → adj_high
+  adj_high: 5
+  threshold_mid: 60.0               # composite 60–79 → adj_mid
+  adj_mid: 0
+  threshold_low: 40.0               # composite 40–59 → adj_low
+  adj_low: -5
+  adj_below_low: -10                # composite < 40 → adj_below_low
+
+# Momentum Adjustment (stub: returns adj_neutral when data unavailable)
+momentum:
+  adj_confirms: 5
+  adj_neutral: 0
+  adj_diverges: -5
+
+# Breakout Adjustment (stub: returns adj_none when data unavailable)
+breakout:
+  adj_confirmed: 5
+  adj_retest: 5
+  adj_failed: -8
+  adj_none: 0
+
+# Loss Streak Adjustment — consecutive losses for this instrument
+loss_streak:
+  adj_per_loss: -3
+  floor: -15                    # max(floor, adj_per_loss × consecutive_losses)
+  lookback_trading_days: 5
+
+# Historical Accuracy Adjustment — fingerprint lookup in signal_performance_stats
+historical_accuracy:
+  lookback_days: 180            # only consider records within this window
+  min_samples_full: 30          # full statistical confidence
+  min_samples_partial: 10       # partial confidence (lower adjustment)
+  threshold_high: 70.0          # accuracy > 70%
+  threshold_mid: 60.0           # accuracy 60–70%
+  threshold_neutral: 50.0       # accuracy 50–60% → 0
+  adj_high_full: 8
+  adj_high_partial: 4
+  adj_mid_full: 4
+  adj_mid_partial: 2
+  adj_neutral: 0
+  adj_low_full: -6              # accuracy < 50%, >= 30 samples
+  adj_low_partial: -3           # accuracy < 50%, 10–29 samples
+
+# Calibration — weekly Sunday recalibration process
+calibration:
+  lookback_days: 90
+  min_bucket_size: 10           # minimum signals in bucket for calibration
+  error_threshold_pct: 10.0     # apply factor only if error > 10%
+  # Redis key prefix: confidence:calibration:{bucket_label}
+
+# Execution gate
+gate:
+  min_score: 70
+  min_confidence: 65
+
+# Confidence ceiling by score band
+ceiling:
+  strong_score_threshold: 85    # >= 85 → uncapped (100)
+  standard_max_confidence: 92   # 70–84 → cap at 92
+
+# Signal Agreement Adjustment (AD-5) — component direction alignment
+# signal_agreement_pct = (agreeing_components / available_components) × 100
+signal_agreement:
+  threshold_high: 85.0              # pct >= 85 → adj_high
+  adj_high: 5
+  threshold_mid: 71.0               # pct 71–84 → adj_mid
+  adj_mid: 2
+  threshold_low: 57.0               # pct 57–70 → adj_low
+  adj_low: 0
+  adj_below_low: -5                 # pct < 57 → adj_below_low
+
+# Recent Performance Adjustment (AD-4) — instrument-level win rate history
+# combined_pct = weight_short × last_N_short_win_pct + weight_long × last_N_long_win_pct
+recent_performance:
+  window_short: 20                  # lookback for short window (signals)
+  window_long: 50                   # lookback for long window (signals)
+  weight_short: 0.70                # weight for short window
+  weight_long: 0.30                 # weight for long window
+  threshold_high: 65.0              # combined_pct >= 65 → adj_high
+  adj_high: 5
+  threshold_mid: 55.0               # combined_pct 55–64 → adj_mid
+  adj_mid: 2
+  threshold_low: 45.0               # combined_pct 45–54 → adj_low
+  adj_low: 0
+  adj_below_low: -6                 # combined_pct < 45 → adj_below_low
+
+# Redis deduplication
+dedup:
+  ttl_seconds: 1800             # 30 minutes
+  score_delta_threshold: 5.0    # allow through if delta > 5 pts
+  key_prefix: "signal:dedup"

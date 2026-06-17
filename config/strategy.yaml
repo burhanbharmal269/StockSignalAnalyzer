@@ -1,0 +1,336 @@
+version: "1.0"
+
+# ---------------------------------------------------------------------------
+# Base weights per scoring component (total = 100)
+# Source: docs/19_STRATEGY_FRAMEWORK.md, docs/16_SIGNAL_SCORING_ENGINE.md
+# ---------------------------------------------------------------------------
+weights:
+  base:
+    OI_BUILDUP: 25
+    TREND: 20
+    OPTION_CHAIN: 20
+    VOLUME: 15
+    VWAP: 10
+    SENTIMENT: 5
+    IV_ANALYSIS: 5
+
+  # Multipliers applied to base weights per market regime.
+  # Weights are renormalized to 100 after multiplication.
+  regime_multipliers:
+    TRENDING_BULLISH:
+      OI_BUILDUP: 1.20
+      TREND: 1.30
+      OPTION_CHAIN: 1.00
+      VOLUME: 1.10
+      VWAP: 1.10
+      SENTIMENT: 1.00
+      IV_ANALYSIS: 0.70
+
+    TRENDING_BEARISH:
+      OI_BUILDUP: 1.20
+      TREND: 1.30
+      OPTION_CHAIN: 1.10
+      VOLUME: 1.10
+      VWAP: 1.10
+      SENTIMENT: 1.20
+      IV_ANALYSIS: 1.10
+
+    SIDEWAYS:
+      OI_BUILDUP: 1.00
+      TREND: 0.25   # ADX gate makes trend near-zero in sideways
+      OPTION_CHAIN: 1.40
+      VOLUME: 1.00
+      VWAP: 1.30    # mean-reversion mode
+      SENTIMENT: 1.00
+      IV_ANALYSIS: 1.40
+
+    HIGH_VOLATILITY:
+      OI_BUILDUP: 0.80
+      TREND: 0.60
+      OPTION_CHAIN: 1.25
+      VOLUME: 1.00
+      VWAP: 0.70
+      SENTIMENT: 1.20
+      IV_ANALYSIS: 1.60
+
+    LOW_VOLATILITY:
+      OI_BUILDUP: 0.90
+      TREND: 0.70
+      OPTION_CHAIN: 1.10
+      VOLUME: 0.90
+      VWAP: 0.80
+      SENTIMENT: 1.00
+      IV_ANALYSIS: 1.60
+
+# ---------------------------------------------------------------------------
+# Signal execution gates
+# ---------------------------------------------------------------------------
+gates:
+  min_score_to_execute: 70
+  min_confidence_to_execute: 65
+  data_completeness_min_pct: 75.0
+  direction_conviction_min: 0.45
+
+# ---------------------------------------------------------------------------
+# Component 1 — OI Build-up (max 25 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 1
+# ---------------------------------------------------------------------------
+oi_buildup:
+  # Thresholds to classify quadrant
+  oi_change_strong_pct: 2.0       # % OI change to trigger Long/Short build-up
+  price_change_min_pct: 0.3       # % price change required for confirmation
+
+  # Score formula multipliers
+  long_oi_multiplier: 1.8         # Long/Short build-up: oi_chg × this
+  long_price_multiplier: 2.0      # Long/Short build-up: price_chg × this
+  covering_oi_multiplier: 1.0     # Short covering / Long unwinding: |oi_chg| × this
+  covering_price_multiplier: 1.5  # Short covering / Long unwinding: price_chg × this
+
+  # Score caps per quadrant type
+  max_strong_score: 25.0          # Long/Short build-up (5-star strength)
+  max_weak_score: 15.0            # Short covering / Long unwinding (3-star strength)
+  ambiguous_floor: 8.0            # No clear quadrant — noise floor
+
+  # PCR adjustments
+  pcr_bullish_low: 0.7            # PCR < 0.7 → contrarian bearish signal for LONG
+  pcr_bullish_high: 1.0           # PCR 0.7-1.0 → bullish for LONG
+  pcr_strong_bullish: 1.3         # PCR > 1.3 → contrarian bullish (+3 for LONG)
+  pcr_adjustment_against: -2.0    # Contrarian reading vs signal direction
+  pcr_adjustment_with: 2.0        # Confirming reading with signal direction
+  pcr_adjustment_strong: 3.0      # Strong contrarian flip (PCR > 1.3 for LONG)
+
+  # FII net position adjustment
+  fii_net_threshold_contracts: 5000  # Absolute contract threshold for FII signal
+  fii_adjustment: 2.0             # +/- added when FII confirms signal direction
+
+  # Max pain distance adjustment
+  max_pain_distance_pct: 1.0      # % distance from max pain for gravitational pull
+  max_pain_adjustment: 2.0        # Score added when approaching max pain on expiry
+  dte_max_pain_dominant: 3        # DTE at which max pain becomes dominant
+
+# ---------------------------------------------------------------------------
+# Component 2 — Trend Following (max 20 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 2
+# ---------------------------------------------------------------------------
+trend:
+  # ADX gate — HARD GATE: ADX below this returns 0 regardless of direction
+  adx_gate: 15.0  # lowered from 20: allows TREND score for ADX 15-20 (moderate trend)
+
+  # ADX score tiers (Step 1)
+  adx_weak: 25.0
+  adx_moderate: 28.0
+  adx_strong: 32.0
+  adx_very_strong: 36.0
+  adx_score_gate_to_weak: 8.0     # ADX 20-25
+  adx_score_weak_to_moderate: 12.0  # ADX 25-28
+  adx_score_moderate_to_strong: 16.0  # ADX 28-32
+  adx_score_strong_to_very_strong: 18.0  # ADX 32-36
+  adx_score_very_strong: 20.0     # ADX > 36
+
+  # DI spread thresholds (Step 2)
+  di_spread_no_signal: 5.0        # Below this = too close to call
+  di_spread_moderate: 10.0
+  di_spread_strong: 15.0
+  di_spread_score_moderate: 3.0   # DI spread 5-10
+  di_spread_score_strong: 5.0     # DI spread 10-15
+  di_spread_score_very_strong: 7.0  # DI spread > 15
+
+  # EMA alignment scores (Step 3, 1-hour timeframe)
+  ema_full_alignment_score: 5.0   # EMA20 > EMA50 > EMA200 (or inverse for SHORT)
+  ema_partial_20_50_score: 2.0    # EMA20 > EMA50 only
+  ema_partial_20_200_score: 1.0   # EMA20 > EMA200 only
+
+  # Supertrend (Step 4)
+  supertrend_score: 3.0           # Supertrend confirms signal direction
+
+  # Multi-timeframe confirmation (Step 5)
+  mtf_3_of_4_score: 3.0           # 3 of 4 timeframes aligned
+  mtf_2_of_4_score: 1.0           # 2 of 4 timeframes aligned
+
+  # RSI gate (Step 6) — filters overbought/oversold entries
+  rsi_long_min: 45.0
+  rsi_long_max: 75.0
+  rsi_short_min: 25.0
+  rsi_short_max: 55.0
+  rsi_gate_score: 1.0
+
+# ---------------------------------------------------------------------------
+# Component 3 — Option Chain Analysis (max 20 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 3
+# ---------------------------------------------------------------------------
+option_chain:
+  # IV Percentile scoring for LONG signal (Step 1)
+  iv_long_tier_1_max: 20.0        # iv_pct 0-20 → +6
+  iv_long_tier_2_max: 40.0        # iv_pct 20-40 → +4
+  iv_long_tier_3_max: 60.0        # iv_pct 40-60 → +3
+  iv_long_tier_4_max: 75.0        # iv_pct 60-75 → +1, above 75 → 0
+  iv_long_score_tier_1: 6.0
+  iv_long_score_tier_2: 4.0
+  iv_long_score_tier_3: 3.0
+  iv_long_score_tier_4: 1.0
+  iv_long_score_tier_5: 0.0       # iv_pct > 75
+
+  # IV Percentile scoring for SHORT signal (Step 1)
+  iv_short_tier_1_max: 30.0       # iv_pct 0-30 → +2
+  iv_short_tier_2_max: 55.0       # iv_pct 30-55 → +4
+  iv_short_tier_3_max: 70.0       # iv_pct 55-70 → +6, above 70 → +8
+  iv_short_score_tier_1: 2.0
+  iv_short_score_tier_2: 4.0
+  iv_short_score_tier_3: 6.0
+  iv_short_score_tier_4: 8.0      # iv_pct > 70
+
+  # IV Skew (Step 2)
+  iv_skew_threshold: 1.0          # abs(skew) < this = neutral
+  iv_skew_score: 2.0              # Added when skew confirms signal direction
+
+  # GEX (Step 3)
+  gex_aligned_score: 2.0          # GEX strike pulls price toward signal direction
+  gex_against_score: -1.0         # GEX creates resistance against signal direction
+  gex_squeeze_score: 2.0          # Negative GEX amplifies move in signal direction
+
+  # OI Wall Proximity (Step 4)
+  oi_wall_close_pct: 0.5          # Wall within 0.5% = immediate resistance/support
+  oi_wall_medium_pct: 1.0         # Wall at 0.5-1.0%
+  oi_wall_far_pct: 2.0            # Wall at 1.0-2.0%, beyond 2.0% = very far
+  oi_wall_close_score: -3.0       # Immediate wall blocking move
+  oi_wall_medium_score: 0.0       # Neutral
+  oi_wall_far_score: 2.0          # Clear room to run
+  oi_wall_very_far_score: 3.0     # Significant room
+
+  # PCR Direction Trend (Step 5)
+  pcr_trend_confirms_score: 2.0   # PCR trend confirms signal direction
+  pcr_trend_against_score: -1.0   # PCR trend against signal direction
+
+# ---------------------------------------------------------------------------
+# Component 4 — Volume Analysis (max 15 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 4
+# ---------------------------------------------------------------------------
+volume:
+  # Volume ratio tiers (Step 1)
+  volume_ratio_tier_1: 0.5        # < 0.5 → 3 pts
+  volume_ratio_tier_2: 1.0        # 0.5-1.0 → 6 pts
+  volume_ratio_tier_3: 1.5        # 1.0-1.5 → 9 pts
+  volume_ratio_tier_4: 2.0        # 1.5-2.0 → 12 pts, >= 2.0 → 15 pts
+  volume_ratio_score_1: 3.0
+  volume_ratio_score_2: 6.0
+  volume_ratio_score_3: 9.0
+  volume_ratio_score_4: 12.0
+  volume_ratio_score_5: 15.0      # >= 2.0x average
+
+  # Volume divergence penalty (Step 2)
+  divergence_penalty: 5.0         # Price up on declining volume = suspect
+
+  # OBV confirmation (Step 3)
+  obv_confirms_score: 2.0
+  obv_against_score: -2.0
+
+  # Cumulative delta (Step 4)
+  delta_confirms_score: 2.0
+  delta_against_score: -2.0
+
+  # VPOC proximity (Step 5)
+  vpoc_threshold_pct: 0.2         # Within 0.2% of VPOC
+  vpoc_bonus: 1.0
+
+# ---------------------------------------------------------------------------
+# Component 5 — VWAP Analysis (max 10 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 5
+# ---------------------------------------------------------------------------
+vwap:
+  # Mode A thresholds (SIDEWAYS and HIGH_VOLATILITY regime)
+  mode_a_extreme_sigma: 1.5
+  mode_a_strong_sigma: 1.0
+  mode_a_moderate_sigma: 0.5
+  mode_a_score_extreme: 10.0
+  mode_a_score_strong: 7.0
+  mode_a_score_moderate: 4.0
+
+  # Volume and RSI gates for Mode A
+  mode_a_volume_ratio_extreme: 1.5
+  mode_a_volume_ratio_strong: 1.2
+  mode_a_rsi_long_extreme: 35.0   # RSI < this for LONG extreme setup
+  mode_a_rsi_long_strong: 45.0
+  mode_a_rsi_long_moderate: 50.0
+  mode_a_rsi_short_extreme: 65.0  # RSI > this for SHORT extreme setup
+  mode_a_rsi_short_strong: 55.0
+  mode_a_rsi_short_moderate: 50.0
+
+  # VWAP touch count degradation multipliers
+  touch_count_multiplier_0: 1.00
+  touch_count_multiplier_1: 0.85
+  touch_count_multiplier_2: 0.70
+  touch_count_multiplier_3_plus: 0.50
+
+  # Mode B thresholds (TRENDING regime)
+  mode_b_score_bouncing: 10.0     # Price near VWAP and reversing
+  mode_b_score_above_only: 6.0    # Price above VWAP (LONG), below VWAP (SHORT)
+  mode_b_score_caution: 2.0       # Price on wrong side of VWAP for signal direction
+  mode_b_bounce_proximity_sigma: 0.3  # "Near VWAP" threshold in sigma units
+
+  # Regime → mode mapping (SIDEWAYS and HIGH_VOLATILITY use Mode A, rest use Mode B)
+  # LOW_VOLATILITY: Mode A with weaker signals (multiplier applied by regime weight)
+
+# ---------------------------------------------------------------------------
+# Component 6 — Sentiment Analysis (max 5 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 6
+# ---------------------------------------------------------------------------
+sentiment:
+  # NeutralSentimentProvider returns score=50 → NEUTRAL → 2.5 pts each side
+  neutral_score: 50
+  max_weight: 5
+
+  # Sentiment bucket thresholds (provider returns 0-100 score)
+  strongly_bullish_min: 80
+  bullish_min: 60
+  neutral_min: 40      # 40-60 = NEUTRAL
+  bearish_min: 20      # 20-40 = BEARISH
+  # Below 20 = STRONGLY_BEARISH
+
+  # Points per sentiment bucket per direction
+  strongly_bullish_long_score: 5.0
+  strongly_bullish_short_score: 0.0
+  bullish_long_score: 4.0
+  bullish_short_score: 1.0
+  neutral_long_score: 2.5
+  neutral_short_score: 2.5
+  bearish_long_score: 1.0
+  bearish_short_score: 4.0
+  strongly_bearish_long_score: 0.0
+  strongly_bearish_short_score: 5.0
+
+  # Freshness: treat as NEUTRAL if older than this (minutes)
+  max_age_minutes: 60
+
+# ---------------------------------------------------------------------------
+# Component 7 — IV Analysis (max 5 pts)
+# Source: docs/21_SIGNAL_ENGINE.md Component 7
+# ---------------------------------------------------------------------------
+iv_analysis:
+  # LONG vol signal scoring (buy premium — low IV is good)
+  # iv_pct < 20 AND IVR < 30: 5 pts
+  iv_buy_percentile_max: 20.0
+  iv_buy_score_max: 5.0
+  iv_buy_percentile_mid: 35.0
+  iv_buy_score_mid: 3.0
+  iv_buy_percentile_low: 50.0
+  iv_buy_score_low: 1.0
+  # iv_pct > 50: 0 pts
+
+  # SHORT vol signal scoring (sell premium — high IV is good)
+  # iv_pct > 70: 5 pts
+  iv_sell_percentile_min: 70.0
+  iv_sell_score_max: 5.0
+  iv_sell_percentile_mid: 55.0
+  iv_sell_score_mid: 3.0
+  iv_sell_percentile_low: 40.0
+  iv_sell_score_low: 1.0
+  # iv_pct < 40: 0 pts
+
+  # HV/IV ratio bonuses
+  hv_iv_ratio_buy_threshold: 1.2   # HV > IV → options cheap → buy vol bonus
+  hv_iv_ratio_sell_threshold: 0.8  # HV < IV → options expensive → sell vol bonus
+  hv_iv_bonus: 2.0                 # Bonus when HV/IV ratio confirms strategy
+
+  # VIX penalty for short vol (selling options in high-VIX is dangerous)
+  vix_high_threshold: 20.0
+  vix_short_vol_penalty: 2.0       # Applied to short_score when VIX > threshold

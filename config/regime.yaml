@@ -1,0 +1,121 @@
+# Market Regime Engine Configuration
+# Source of truth: docs/20_MARKET_REGIME_ENGINE.md
+# All thresholds are here — no magic numbers in source code.
+# Tune this file to adjust regime sensitivity without code changes.
+
+version: "1.0"
+
+# ---------------------------------------------------------------------------
+# ADX thresholds
+# ---------------------------------------------------------------------------
+adx:
+  trend_strong: 25.0    # ADX >= 25: hard gate for TRENDING regimes
+  trend_weak: 22.0      # ADX 22–25: transition zone; use DI spread to decide
+  sideways: 22.0        # ADX < 22: hard gate for SIDEWAYS
+
+# ---------------------------------------------------------------------------
+# India VIX thresholds
+# ---------------------------------------------------------------------------
+vix:
+  panic: 28.0           # VIX > 28: always HIGH_VOLATILITY (panic override, Rule 1)
+  high: 22.0            # VIX > 22: HIGH_VOLATILITY qualifier (Rules 2–4)
+  elevated: 20.0        # VIX > 20: disqualifier for TRENDING_BULLISH hard gate
+  low: 14.0             # VIX < 14: LOW_VOLATILITY qualifier (Rule 5b)
+  very_low: 13.0        # VIX < 13: strong LOW_VOLATILITY (Rules 5 & 6)
+
+# ---------------------------------------------------------------------------
+# ATR ratio thresholds  (current ATR(14) / SMA-20 of ATR)
+# ---------------------------------------------------------------------------
+atr_ratio:
+  very_high: 2.0        # ATR ratio > 2.0: immediate HIGH_VOLATILITY trigger
+  high: 1.5             # ATR ratio > 1.5: HIGH_VOLATILITY qualifier
+  moderate_high: 1.2    # ATR ratio 1.2–1.5: moderate volatility expansion
+  low: 0.8              # ATR ratio < 0.8: LOW_VOLATILITY qualifier
+  very_low: 0.7         # ATR ratio < 0.7: strong LOW_VOLATILITY signal
+  very_very_low: 0.5    # ATR ratio < 0.5: extreme compression
+
+# ---------------------------------------------------------------------------
+# Bollinger Band Width Percentile thresholds
+# ---------------------------------------------------------------------------
+bb_width_percentile:
+  low: 40.0             # < 40th percentile: contracting (SIDEWAYS confirmation)
+  very_low: 20.0        # < 20th: strong SIDEWAYS / LOW_VOLATILITY
+  extreme_low: 10.0     # < 10th: extreme compression
+
+# ---------------------------------------------------------------------------
+# IV Percentile thresholds
+# ---------------------------------------------------------------------------
+iv_percentile:
+  extreme: 85.0
+  very_high: 75.0
+  high: 65.0
+  low: 20.0
+  very_low: 15.0
+
+# ---------------------------------------------------------------------------
+# Advance-Decline ratio thresholds
+# ---------------------------------------------------------------------------
+advance_decline:
+  strong_bull: 1.5
+  bull: 1.2
+  neutral_upper: 1.1
+  neutral_lower: 0.9
+  bear: 0.8
+  strong_bear: 0.7
+  panic_high: 2.0       # A/D > 2.0: euphoria (HIGH_VOL signal)
+  panic_low: 0.6        # A/D < 0.6: panic (HIGH_VOL signal)
+
+# ---------------------------------------------------------------------------
+# PCR thresholds
+# ---------------------------------------------------------------------------
+pcr:
+  neutral_upper: 1.2    # PCR 0.8–1.2: neutral directional flow (SIDEWAYS confirmation)
+  neutral_lower: 0.8
+
+# ---------------------------------------------------------------------------
+# DI spread thresholds for TRENDING confidence scoring
+# ---------------------------------------------------------------------------
+di_spread:
+  hard_gate_min: 5.0    # DI spread must be >= 5 for TRENDING hard gates
+  strong: 10.0          # DI spread > 10: strong directional bias (+10 pts)
+
+# ---------------------------------------------------------------------------
+# Nifty 50 above 200 DMA thresholds
+# ---------------------------------------------------------------------------
+nifty_above_200dma:
+  bull_strong: 70.0     # >= 70%: strong bullish breadth (+5 pts)
+  bull: 60.0            # >= 60%: bullish breadth (+3 pts)
+  bear: 40.0            # <= 40%: bearish breadth
+
+# ---------------------------------------------------------------------------
+# FII consecutive days threshold
+# ---------------------------------------------------------------------------
+fii_consecutive_days: 3  # 3+ consecutive net-buying/selling days triggers FII signal
+
+# ---------------------------------------------------------------------------
+# Confidence gate for applying regime multipliers
+# ---------------------------------------------------------------------------
+confidence:
+  full_multiplier: 80   # >= 80: apply full regime multipliers
+  blend_75_pct: 60      # 60–79: apply 75% of multipliers
+  blend_40_pct: 45      # 45–59: apply 40% of multipliers
+  # < 45: apply no multipliers (use baseline weights)
+
+# ---------------------------------------------------------------------------
+# Minimum confidence to declare each regime as active
+# ---------------------------------------------------------------------------
+activation:
+  trending: 60          # >= 60 to declare TRENDING_BULLISH or TRENDING_BEARISH
+  sideways: 55          # >= 55 to declare SIDEWAYS
+  high_volatility: 50   # >= 50 to declare HIGH_VOLATILITY
+  low_volatility: 55    # >= 55 to declare LOW_VOLATILITY
+
+# ---------------------------------------------------------------------------
+# Transition anti-whipsaw: minimum consecutive bars before confirming a change
+# ---------------------------------------------------------------------------
+transition_min_bars:
+  sideways_to_trending: 3    # 3 bars with ADX > trend_weak before TRENDING confirmed
+  trending_to_sideways: 5    # 5 bars with ADX < sideways before SIDEWAYS confirmed
+  any_to_high_vol: 1         # Immediate (safety first — VIX spike overrides instantly)
+  high_vol_exit: 3           # 3 consecutive days VIX < 20 AND ATR ratio < 1.2
+  any_to_low_vol: 5          # 5 consecutive days VIX < low AND ATR ratio < low

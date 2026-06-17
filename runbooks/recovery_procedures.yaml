@@ -1,0 +1,109 @@
+---
+id: RB-007
+title: General Recovery Procedures
+version: "1.0"
+severity: varies
+last_updated: "2026-06-15"
+owner: trading-ops
+
+summary: >
+  Standard recovery checklists for common post-incident states.
+  Use this after any P1/P2 incident once the root cause is resolved.
+
+pre_recovery_checklist:
+  - "[ ] Root cause identified and documented"
+  - "[ ] All infrastructure components healthy (DB, Redis, Broker API)"
+  - "[ ] Stakeholder notification sent"
+  - "[ ] Recovery authorized by Head of Trading (market hours) or on-call lead (off-hours)"
+
+full_system_recovery:
+  steps:
+    - id: "1"
+      action: Health check all components
+      commands:
+        - "curl https://api/api/v1/health"
+        - "redis-cli ping"
+        - "pg_isready -h $DB_HOST"
+        - "curl https://api/api/v1/broker/status"
+
+    - id: "2"
+      action: Run reconciliation
+      command: "curl -X POST -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/reconciliation/trigger"
+      wait: "Poll GET /api/v1/reconciliation/runs/{run_id} until status=COMPLETED"
+
+    - id: "3"
+      action: Verify reconciliation results
+      command: "curl -H 'Authorization: Bearer $TOKEN' 'https://api/api/v1/reconciliation/discrepancies?unrepaired_only=true'"
+      expected: Empty list or all items marked repaired
+
+    - id: "4"
+      action: Review live trading safety state
+      command: "curl -H 'Authorization: Bearer $TOKEN' https://api/api/v1/trading-safety/state"
+      note: If locked, unlock only after reconciliation confirms clean state.
+
+    - id: "5"
+      action: Deactivate kill switch
+      command: "curl -X DELETE -H 'Authorization: Bearer $ADMIN_TOKEN' https://api/api/v1/broker/kill-switch"
+
+    - id: "6"
+      action: Monitor for 10 minutes post-recovery
+      metrics_to_watch:
+        - Order placement latency (P95 < 200ms)
+        - Risk check approval rate
+        - Broker error rate (target: 0)
+        - Kill switch state (target: inactive)
+
+partial_recovery_state_decisions:
+  - scenario: "Orders in PENDING state older than 30 minutes"
+    action: Run reconciliation; auto-repair will cancel them with broker if they're rogue.
+
+  - scenario: "Position PnL doesn't match broker"
+    action: Check reconciliation discrepancies; manually update position if auto-repair fails.
+
+  - scenario: "Signal in RISK_APPROVED state but order never created"
+    action: >
+      The pipeline event may have been lost (Redis outage). Re-evaluate the signal
+      if still within validity window, or expire it and let the next cycle generate a new signal.
+
+  - scenario: "Duplicate orders detected"
+    action: >
+      Immediately check broker portal for duplicate fills.
+      If duplicated at broker: file immediate cancellation request via broker support.
+      Run reconciliation with auto-repair to reconcile OMS state.
+
+paper_to_live_transition_checklist:
+  description: "Use before switching from paper broker to live broker"
+  checklist:
+    - "[ ] All 16 IBroker compliance tests pass for the live broker adapter"
+    - "[ ] Live trading safety initialized: GET /api/v1/trading-safety/state returns stage=1"
+    - "[ ] Capital ramp-up at Stage 1 (₹5,000 effective capital)"
+    - "[ ] Kill switch verified inactive"
+    - "[ ] Reconciliation run shows 0 discrepancies"
+    - "[ ] 30-day paper trading report shows win_rate >= 55% and max_drawdown <= 5%"
+    - "[ ] Risk config reviewed and tightened for live: symbol exposure ≤ 15%, sector ≤ 35%"
+    - "[ ] Access token loaded from secrets manager (never hardcoded)"
+    - "[ ] IP allowlist configured with production server IP"
+    - "[ ] Rate limits reviewed (default 120/min; sensitive paths 20/min)"
+
+runbook_index:
+  - id: RB-001
+    title: Broker Outage Response
+    file: broker_outage.yaml
+  - id: RB-002
+    title: Redis Outage Response
+    file: redis_outage.yaml
+  - id: RB-003
+    title: Database Outage Response
+    file: database_outage.yaml
+  - id: RB-004
+    title: Kill Switch Activation & Deactivation
+    file: kill_switch_activation.yaml
+  - id: RB-005
+    title: Emergency Shutdown & Recovery
+    file: emergency_shutdown.yaml
+  - id: RB-006
+    title: Market Data Outage Response
+    file: market_data_outage.yaml
+  - id: RB-007
+    title: General Recovery Procedures
+    file: recovery_procedures.yaml
