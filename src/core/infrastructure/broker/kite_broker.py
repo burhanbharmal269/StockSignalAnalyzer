@@ -464,18 +464,25 @@ class KiteBroker(IBroker):
 
     async def health_check(self) -> BrokerHealthReport:
         import time
+        import urllib.request
         start = time.monotonic()
         try:
-            kite = self._make_kite(self._config.kite_api_key)
             loop = asyncio.get_event_loop()
-            # instruments endpoint requires no auth — use as connectivity probe
-            await loop.run_in_executor(None, lambda: kite.instruments("NSE"))
+            # Lightweight connectivity probe: GET api.kite.trade root (no auth,
+            # no data payload). Replaces instruments("NSE") which is ~1MB and
+            # triggers HTTP 429 when called every 10s.
+            await loop.run_in_executor(
+                None,
+                lambda: urllib.request.urlopen(
+                    "https://api.kite.trade/", timeout=10
+                ).close(),
+            )
             latency_ms = (time.monotonic() - start) * 1000
             return BrokerHealthReport(
                 broker_name="kite",
                 status=BrokerHealthStatus.HEALTHY,
                 latency_ms=round(latency_ms, 2),
-                details={"probe": "instruments_nse"},
+                details={"probe": "api_root"},
             )
         except Exception as exc:
             latency_ms = (time.monotonic() - start) * 1000

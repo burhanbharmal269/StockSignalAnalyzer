@@ -34,6 +34,7 @@ _CHECK_INTERVAL_SECONDS: float = 10.0
 _BROKER_UNAVAILABLE_THRESHOLD_SECONDS: float = 60.0
 _CONSECUTIVE_FAILURE_THRESHOLD: int = 5
 _MARKET_DATA_UNAVAILABLE_THRESHOLD_SECONDS: float = 120.0
+_BROKER_PROBE_MIN_INTERVAL_SECONDS: float = 30.0   # rate-limit the broker HTTP probe
 
 
 class AutoKillSwitchService:
@@ -59,6 +60,7 @@ class AutoKillSwitchService:
 
         # Tracking state
         self._broker_unavailable_since: float | None = None
+        self._last_broker_probe: float = 0.0   # monotonic timestamp of last probe
         self._running: bool = False
 
     async def run(self) -> None:
@@ -99,13 +101,17 @@ class AutoKillSwitchService:
                 return
 
     async def _check_broker_unavailable(self) -> tuple[str, str] | None:
+        now = time.monotonic()
+        # Rate-limit: skip the HTTP probe if we ran it recently.
+        if now - self._last_broker_probe < _BROKER_PROBE_MIN_INTERVAL_SECONDS:
+            return None
+        self._last_broker_probe = now
         try:
             health = await self._broker_health.check()
             if health.status.value in ("HEALTHY", "DEGRADED"):
                 self._broker_unavailable_since = None
                 return None
             # Broker is DOWN
-            now = time.monotonic()
             if self._broker_unavailable_since is None:
                 self._broker_unavailable_since = now
             elapsed = now - self._broker_unavailable_since
