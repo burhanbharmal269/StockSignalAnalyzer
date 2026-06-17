@@ -89,8 +89,8 @@ async def broker_status(
     )
     health = await broker_health_service.check(session=health_session)
 
-    # Downgrade session_status if health probe detected auth failure
-    if session_status == "CONNECTED" and health.status == BrokerHealthStatus.DOWN:
+    # Downgrade session_status only on explicit auth rejection (not connectivity/market-hours DOWN)
+    if session_status == "CONNECTED" and health.details.get("auth") == "failed":
         session_status = "ERROR"
 
     ks_state = await kill_switch_repository.get_state()

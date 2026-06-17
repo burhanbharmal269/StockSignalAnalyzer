@@ -134,7 +134,9 @@ export function BrokerView() {
   const isHealthy = status.status === "HEALTHY";
   const sessionStatus = status.session_status;
   const session = sessionData?.session ?? null;
-  const hasActiveSession = sessionStatus === "CONNECTED";
+  const hasActiveSession =
+    sessionStatus === "CONNECTED" ||
+    (session != null && session.is_active && !session.is_expired);
 
   const isLocked = executionStatus?.locked ?? false;
   const currentMode = (executionStatus?.execution_mode ?? "MANUAL") as ExecutionMode;
