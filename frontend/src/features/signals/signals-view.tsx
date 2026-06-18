@@ -25,9 +25,10 @@ function formatOptionChain(signal: Signal): string | null {
   const d = new Date(signal.option_expiry);
   const day = d.getUTCDate();
   const month = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
-  const strike = Number.isInteger(signal.option_strike)
-    ? signal.option_strike
-    : signal.option_strike.toFixed(0);
+  const strike =
+    signal.option_strike % 1 === 0
+      ? signal.option_strike.toFixed(0)
+      : signal.option_strike.toFixed(1);
   return `${day} ${month} ${strike} ${signal.option_type}`;
 }
 
