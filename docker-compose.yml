@@ -63,7 +63,7 @@ services:
       - "8000:8000"
     volumes:
       - ./src:/app/src:ro
-      - ./config:/app/config:ro
+      - ./config:/app/config
       - ./alembic:/app/alembic:ro
     depends_on:
       postgres:

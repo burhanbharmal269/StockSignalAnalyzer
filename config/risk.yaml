@@ -8,12 +8,12 @@
 version: "2.0"
 
 capital:
-  total_capital: 500000          # INR — set to actual trading capital before Phase 14
-  risk_per_trade_pct: 1.0        # 1% of capital risked per trade (renamed from capital_at_risk_pct)
+  total_capital: 150000          # INR — default ₹1,50,000; update via Settings → Trading
+  risk_per_trade_pct: 1.0        # 1% of capital risked per trade = ₹1,500 on ₹1.5L
 
 daily_loss:
-  limit_pct: 2.0                 # 2% of capital = daily stop (INR 10,000 on 500K capital)
-  limit_abs: 10000               # INR; whichever triggers first (pct or abs)
+  limit_pct: 2.0                 # 2% of capital = daily stop (₹3,000 on ₹1.5L)
+  limit_abs: 3000                # INR; whichever triggers first (pct or abs)
   graduated_response:
     reduce_size_at_pct: 50       # at 50% of daily limit consumed → halve new position sizes
     paper_mode_at_pct: 75        # at 75% → paper trading mode (position_size_multiplier = 0.0)
@@ -21,11 +21,11 @@ daily_loss:
 
 weekly_loss:
   limit_pct: 5.0                 # rolling 5 trading days (not calendar week)
-  limit_abs: 25000               # INR; whichever triggers first
+  limit_abs: 7500                # INR; whichever triggers first
 
 monthly_loss:
   limit_pct: 10.0                # rolling 21 trading days
-  limit_abs: 50000               # INR; whichever triggers first
+  limit_abs: 15000               # INR; whichever triggers first
 
 volatility_block:
   vix_threshold: 25.0            # India VIX above 25 → block new positions
@@ -74,7 +74,7 @@ margin:
   utilization_limit_pct: 80       # alert at 80% margin utilization (MarginAlertBreached event)
   min_free_margin_pct: 20         # block new positions if free margin < 20%
   timeout_ms: 150                 # broker margin API timeout in milliseconds (D-9)
-  fallback_margin_per_lot_inr: 50000  # used when MarginCachePoller has not yet populated cache
+  fallback_margin_per_lot_inr: 15000  # used when MarginCachePoller has not yet populated cache
 
 risk_reward:
   min_ratio: 1.5                  # renamed from minimum_ratio; minimum R:R to accept a signal
