@@ -1283,6 +1283,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         signal_engine=signal_engine_service,
         analytics_svc=signal_analytics_service,
         option_chain_svc=option_chain_service,
+        signal_config=signal_config,
     )
 
     option_chain_poller_service = providers.Singleton(

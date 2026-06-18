@@ -56,11 +56,15 @@ class OptionStrikeSelector:
         direction: str,
         underlying_price: float,
         chain_entries: list[dict[str, Any]],
+        min_dte: int = 2,
+        max_dte: int = 15,
     ) -> OptionPlay | None:
         """Return the best option play or None if chain is empty / illiquid.
 
         chain_entries: list of dicts with keys:
             strike, option_type, ltp, oi, expiry (date or str), underlying
+        min_dte / max_dte: preferred DTE window. Falls back gracefully so a
+            contract is always returned when the chain has any liquid strikes.
         """
         if not chain_entries:
             return None
@@ -75,8 +79,8 @@ class OptionStrikeSelector:
         if not side_entries:
             return None
 
-        # Choose nearest expiry — minimises time-value cost
-        nearest_expiry = self._nearest_expiry(side_entries)
+        # Choose preferred expiry within DTE window
+        nearest_expiry = self._nearest_expiry(side_entries, min_dte=min_dte, max_dte=max_dte)
         expiry_entries = [
             e for e in side_entries
             if self._expiry_str(e) == nearest_expiry
@@ -125,12 +129,34 @@ class OptionStrikeSelector:
             return raw[:10]
         return ""
 
-    def _nearest_expiry(self, entries: list[dict[str, Any]]) -> str:
-        today = datetime.utcnow().date().isoformat()
+    def _nearest_expiry(
+        self,
+        entries: list[dict[str, Any]],
+        min_dte: int = 2,
+        max_dte: int = 15,
+    ) -> str:
+        today = datetime.utcnow().date()
         expiries = sorted(
-            {self._expiry_str(e) for e in entries if self._expiry_str(e) >= today}
+            {self._expiry_str(e) for e in entries if self._expiry_str(e) >= today.isoformat()}
         )
-        return expiries[0] if expiries else ""
+        if not expiries:
+            return ""
+
+        def _dte(exp_str: str) -> int:
+            return (date.fromisoformat(exp_str) - today).days
+
+        # 1. Prefer expiries inside the [min_dte, max_dte] window
+        in_window = [e for e in expiries if min_dte <= _dte(e) <= max_dte]
+        if in_window:
+            return in_window[0]
+
+        # 2. Fall back to nearest with DTE >= min_dte (avoids same/next-day gamma)
+        beyond_min = [e for e in expiries if _dte(e) >= min_dte]
+        if beyond_min:
+            return beyond_min[0]
+
+        # 3. Final fallback: absolute nearest (preserves existing behaviour)
+        return expiries[0]
 
     @staticmethod
     def _contract_suffix(expiry_str: str, strike: float, opt_type: str) -> str:

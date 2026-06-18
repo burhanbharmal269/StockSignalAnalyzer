@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from core.application.services.option_chain_service import OptionChainService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
     from core.application.services.signal_engine_service import SignalEngineService
+    from core.infrastructure.config.signal_config import SignalConfig
 
 _log = logging.getLogger(__name__)
 
@@ -354,6 +355,7 @@ class SignalScannerService:
         signal_engine: "SignalEngineService",
         analytics_svc: "SignalAnalyticsService | None" = None,
         option_chain_svc: "OptionChainService | None" = None,
+        signal_config: "SignalConfig | None" = None,
     ) -> None:
         from core.application.services.option_strike_selector import OptionStrikeSelector
         self._universe        = universe_svc
@@ -361,6 +363,7 @@ class SignalScannerService:
         self._engine          = signal_engine
         self._analytics       = analytics_svc
         self._option_chain    = option_chain_svc
+        self._signal_config   = signal_config
         self._strike_selector = OptionStrikeSelector()
         self._running         = False
         # Per-symbol PCR history (last two readings) for trend detection.
@@ -611,10 +614,13 @@ class SignalScannerService:
                     except Exception:
                         pass
                 if chain_data and chain_data.get("entries"):
+                    _dte_cfg = self._signal_config.option_dte if self._signal_config else None
                     option_play = self._strike_selector.select(
                         direction=result.direction,
                         underlying_price=features.get("close") or 0.0,
                         chain_entries=chain_data["entries"],
+                        min_dte=_dte_cfg.min if _dte_cfg else 2,
+                        max_dte=_dte_cfg.max if _dte_cfg else 15,
                     )
                     if option_play:
                         _log.info(

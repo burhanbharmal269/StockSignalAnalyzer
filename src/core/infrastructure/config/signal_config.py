@@ -29,6 +29,18 @@ class SignalRedisConfig(BaseModel):
     active_key_prefix: str = "signal:active"
 
 
+class OptionDteConfig(BaseModel):
+    min: int = 2
+    max: int = 15
+
+    @field_validator("min", "max")
+    @classmethod
+    def _positive(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(f"option_dte values must be >= 0, got {v}")
+        return v
+
+
 _VALID_EXECUTION_MODES = frozenset({"MANUAL", "AUTOMATIC"})
 
 
@@ -38,6 +50,7 @@ class SignalConfig(BaseModel):
     dedup_ttl_minutes: int = 30
     gate: SignalGateConfig = SignalGateConfig()
     redis: SignalRedisConfig = SignalRedisConfig()
+    option_dte: OptionDteConfig = OptionDteConfig()
     execution_mode: str = "MANUAL"  # MANUAL | AUTOMATIC
 
     @field_validator("execution_mode")

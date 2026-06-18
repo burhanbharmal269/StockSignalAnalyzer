@@ -7,6 +7,13 @@ signal:
     min_score: 40       # 40/100 allows strong single-component signals (e.g. index trend ADX>40)
     min_confidence: 35  # 35% confidence floor — realistic when OI/sentiment data absent for indices
 
+  # Expiry window for option contract selection.
+  # Prefer contracts with DTE in [min, max]. Falls back to nearest DTE >= min,
+  # then absolute nearest, so a contract is always selected if the chain has data.
+  option_dte:
+    min: 2   # skip same/next-day expiries — index weekly options at 0-1 DTE have explosive gamma
+    max: 15  # prefer near-term; indices use current/next weekly, stocks use current monthly
+
   # Default execution mode — seeded into Redis at startup if key absent.
   # At runtime, use POST /api/v1/execution/mode to change without restart.
   # MANUAL    — signals generated + stored, NO orders placed
