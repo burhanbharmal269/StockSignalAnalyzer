@@ -32,6 +32,22 @@ function formatOptionChain(signal: Signal): string | null {
   return `${day} ${month} ${strike} ${signal.option_type}`;
 }
 
+/** Days-to-expiry computed client-side from option_expiry (UTC date string). */
+function computeDte(signal: Signal): number | null {
+  if (!signal.option_expiry) return null;
+  const expiry = new Date(signal.option_expiry + "T00:00:00Z");
+  const today  = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const diff = Math.round((expiry.getTime() - today.getTime()) / 86_400_000);
+  return diff >= 0 ? diff : null;
+}
+
+/** Grade A / B badge based on adjusted_score. */
+function signalGrade(signal: Signal): "A" | "B" | null {
+  if (signal.adjusted_score == null) return null;
+  return signal.adjusted_score >= 65 ? "A" : "B";
+}
+
 export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
@@ -66,6 +82,45 @@ export function SignalsView() {
       },
     },
     {
+      id: "dte",
+      header: "DTE",
+      cell: ({ row }) => {
+        const dte = computeDte(row.original);
+        if (dte == null) return <span className="text-muted-foreground text-xs">—</span>;
+        const color =
+          dte === 0 ? "text-loss font-bold" :
+          dte <= 1  ? "text-warning font-semibold" :
+          "text-muted-foreground";
+        return (
+          <span className={cn("tabular-nums text-xs", color)}>
+            {dte === 0 ? "Expiry" : `${dte}d`}
+          </span>
+        );
+      },
+    },
+    {
+      id: "grade",
+      header: "Grade",
+      cell: ({ row }) => {
+        const grade = signalGrade(row.original);
+        const score = row.original.adjusted_score;
+        if (grade == null) return <span className="text-muted-foreground text-xs">—</span>;
+        return (
+          <span
+            title={`Score: ${score?.toFixed(1)}`}
+            className={cn(
+              "text-xs font-bold px-1.5 py-0.5 rounded",
+              grade === "A"
+                ? "bg-profit/10 text-profit border border-profit/30"
+                : "bg-warning/10 text-warning border border-warning/30"
+            )}
+          >
+            {grade}
+          </span>
+        );
+      },
+    },
+    {
       id: "option_entry",
       header: "Entry",
       cell: ({ row }) => {
@@ -90,11 +145,15 @@ export function SignalsView() {
       },
     },
     {
-      accessorKey: "strategy_type",
-      header: "Strategy",
-      cell: ({ row }) => (
-        <span className="text-xs text-muted-foreground">{row.original.strategy_type}</span>
-      ),
+      id: "confidence",
+      header: "Conf%",
+      cell: ({ row }) => {
+        const c = row.original.confidence;
+        if (c == null) return <span className="text-muted-foreground text-xs">—</span>;
+        const pct = (c * 100).toFixed(0);
+        const color = c >= 0.65 ? "text-profit" : c >= 0.50 ? "text-warning" : "text-muted-foreground";
+        return <span className={cn("tabular-nums text-xs font-medium", color)}>{pct}%</span>;
+      },
     },
     {
       accessorKey: "regime",

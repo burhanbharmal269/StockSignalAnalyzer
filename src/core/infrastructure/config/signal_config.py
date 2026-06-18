@@ -30,8 +30,8 @@ class SignalRedisConfig(BaseModel):
 
 
 class OptionDteConfig(BaseModel):
-    min: int = 2
-    max: int = 15
+    min: int = 0
+    max: int = 3
 
     @field_validator("min", "max")
     @classmethod
@@ -39,6 +39,19 @@ class OptionDteConfig(BaseModel):
         if v < 0:
             raise ValueError(f"option_dte values must be >= 0, got {v}")
         return v
+
+
+class IntradayRiskConfig(BaseModel):
+    """Intraday option SL/target sizing — grade-based, fully config-driven."""
+    grade_a_min_score: float = 65.0
+    grade_a_sl_pct: float = 0.20
+    grade_a_target_pct: float = 0.35
+    grade_b_sl_pct: float = 0.15
+    grade_b_target_pct: float = 0.28
+    trailing_stop_enabled: bool = True
+    breakeven_enabled: bool = True
+    position_timeout_minutes: int = 90
+    cutoff_time: str = "15:20:00"
 
 
 _VALID_EXECUTION_MODES = frozenset({"MANUAL", "AUTOMATIC"})
@@ -51,6 +64,7 @@ class SignalConfig(BaseModel):
     gate: SignalGateConfig = SignalGateConfig()
     redis: SignalRedisConfig = SignalRedisConfig()
     option_dte: OptionDteConfig = OptionDteConfig()
+    intraday_risk: IntradayRiskConfig = IntradayRiskConfig()
     execution_mode: str = "MANUAL"  # MANUAL | AUTOMATIC
 
     @field_validator("execution_mode")

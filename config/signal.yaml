@@ -8,11 +8,25 @@ signal:
     min_confidence: 35  # 35% confidence floor — realistic when OI/sentiment data absent for indices
 
   # Expiry window for option contract selection.
-  # Prefer contracts with DTE in [min, max]. Falls back to nearest DTE >= min,
-  # then absolute nearest, so a contract is always selected if the chain has data.
+  # Intraday mode: 0-3 DTE — same-day and next-day weekly expiries for NIFTY/BANKNIFTY;
+  # current-week for stocks. Falls back gracefully when window has no contracts.
   option_dte:
-    min: 2   # skip same/next-day expiries — index weekly options at 0-1 DTE have explosive gamma
-    max: 15  # prefer near-term; indices use current/next weekly, stocks use current monthly
+    min: 0   # intraday: 0-DTE weekly options are the primary vehicle
+    max: 3   # prefer 0-3 DTE for maximum liquidity and leverage
+
+  # Intraday risk parameters — stored in config, not hardcoded in code.
+  # SL/target expressed as fraction of option premium.
+  # Grade A = high conviction (score >= grade_a_min_score); Grade B = lower conviction.
+  intraday_risk:
+    grade_a_min_score: 65.0
+    grade_a_sl_pct: 0.20        # Grade A: 20% SL on option premium
+    grade_a_target_pct: 0.35    # Grade A: 35% target  → 1.75:1 R:R
+    grade_b_sl_pct: 0.15        # Grade B: 15% SL — tighter on lower conviction
+    grade_b_target_pct: 0.28    # Grade B: 28% target  → 1.87:1 R:R
+    trailing_stop_enabled: true  # alert when price retraces 50% of gain
+    breakeven_enabled: true      # move SL to entry when halfway to target
+    position_timeout_minutes: 90 # auto-expire signal if not triggered within 90 min
+    cutoff_time: "15:20:00"      # hard exit: no option positions carried overnight
 
   # Default execution mode — seeded into Redis at startup if key absent.
   # At runtime, use POST /api/v1/execution/mode to change without restart.

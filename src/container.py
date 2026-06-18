@@ -54,6 +54,7 @@ from core.application.services.signal_dedup_service import SignalDedupService
 from core.application.services.signal_engine_service import SignalEngineService
 from core.application.services.signal_scanner_service import SignalScannerService
 from core.application.services.account_state_seeder import AccountStateSeeder
+from core.application.services.market_close_exit_service import MarketCloseExitService
 from core.application.services.signal_expiry_worker import SignalExpiryWorker
 from core.application.services.universe_filter_service import UniverseFilterService
 from core.application.use_cases.instrument_lookup_use_case import InstrumentLookupUseCase
@@ -1283,6 +1284,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
         signal_engine=signal_engine_service,
         analytics_svc=signal_analytics_service,
         option_chain_svc=option_chain_service,
+        signal_config=signal_config,
+    )
+
+    market_close_exit_service: providers.Singleton[MarketCloseExitService] = providers.Singleton(
+        MarketCloseExitService,
+        session_factory=db_session_factory,
+        event_bus=event_bus,
         signal_config=signal_config,
     )
 

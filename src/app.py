@@ -262,6 +262,7 @@ def create_app() -> FastAPI:
         signal_scanner       = container.signal_scanner_service()
         outcome_tracker      = container.signal_outcome_tracker_service()
         option_chain_poller  = container.option_chain_poller_service()
+        market_close_exit    = container.market_close_exit_service()
 
         # Seed historical candles for F&O index underlyings before the scanner starts.
         # Kite stores them under "NIFTY 50" / "NIFTY BANK" etc., but our _resolve_token()
@@ -284,6 +285,7 @@ def create_app() -> FastAPI:
         registry.register("option_chain_poller", option_chain_poller.run)
         registry.register("signal_scanner", signal_scanner.run)
         registry.register("signal_outcome_tracker", outcome_tracker.run)
+        registry.register("market_close_exit", market_close_exit.start)
         await registry.start()
 
         # Start live market feed (Kite WS in live mode; NSE polling fallback otherwise)

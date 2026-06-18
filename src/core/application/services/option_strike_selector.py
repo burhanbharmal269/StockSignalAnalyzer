@@ -7,8 +7,9 @@ Given:
   - nearest expiry in the chain
 
 Selects:
-  - ATM strike (closest to current price) for the correct side
-  - Falls back to 1-strike OTM if ATM has zero LTP
+  - Best liquid contract near ATM for the correct side
+  - Ranks candidates (ATM ± 1 strike) by OI — highest liquidity wins
+  - Falls back to absolute ATM if no candidate meets the OI floor
 
 Produces an OptionPlay with:
   - option_type:   CE or PE
@@ -16,10 +17,13 @@ Produces an OptionPlay with:
   - option_expiry: nearest expiry date string (YYYY-MM-DD)
   - option_symbol: Kite trading symbol (e.g. HDFCBANK26JUN1750CE)
   - entry:  option LTP
-  - sl:     entry × (1 - SL_PCT)      default 30%
-  - target: entry × (1 + TARGET_PCT)  default 60%  → 2:1 R:R
+  - sl:     entry × (1 - sl_pct)
+  - target: entry × (1 + target_pct)
 
-SL / target are expressed in option premium terms.
+SL / target sizing:
+  Grade A (adjusted_score >= grade_a_min_score): sl=20%, target=35%
+  Grade B (adjusted_score < grade_a_min_score or unknown): sl=15%, target=28%
+  Thresholds are read from intraday_risk config — not hardcoded.
 """
 
 from __future__ import annotations
@@ -27,17 +31,23 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
-from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from core.infrastructure.config.signal_config import IntradayRiskConfig
 
 _log = logging.getLogger(__name__)
 
-_SL_PCT_A     = 0.30   # Grade A (score >= 65): full 30% SL — high conviction
-_TARGET_PCT_A = 0.60   # Grade A: 60% target — 2:1 R:R
-_SL_PCT_B     = 0.25   # Grade B (score 40-64): tighter 25% SL — lower conviction
-_TARGET_PCT_B = 0.45   # Grade B: 45% target — 1.8:1 R:R
-_GRADE_A_MIN  = 65.0   # score threshold for Grade A
-_MIN_LTP      = 1.0    # ignore strikes with LTP below this (illiquid)
+# Fallback constants used when no intraday_risk config is supplied
+_DEFAULT_GRADE_A_MIN  = 65.0
+_DEFAULT_SL_A         = 0.20
+_DEFAULT_TARGET_A     = 0.35
+_DEFAULT_SL_B         = 0.15
+_DEFAULT_TARGET_B     = 0.28
+
+_MIN_LTP              = 1.0    # ignore strikes with LTP below this (illiquid)
+_MIN_OI_FLOOR         = 100    # minimum OI to be considered a liquid contract
+_MAX_STRIKE_SPREAD    = 2      # evaluate ATM ± this many strikes for ranking
 
 
 @dataclass(frozen=True)
@@ -59,9 +69,10 @@ class OptionStrikeSelector:
         direction: str,
         underlying_price: float,
         chain_entries: list[dict[str, Any]],
-        min_dte: int = 2,
-        max_dte: int = 15,
+        min_dte: int = 0,
+        max_dte: int = 3,
         adjusted_score: float | None = None,
+        intraday_risk_cfg: "IntradayRiskConfig | None" = None,
     ) -> OptionPlay | None:
         """Return the best option play or None if chain is empty / illiquid.
 
@@ -69,9 +80,8 @@ class OptionStrikeSelector:
             strike, option_type, ltp, oi, expiry (date or str), underlying
         min_dte / max_dte: preferred DTE window. Falls back gracefully so a
             contract is always returned when the chain has any liquid strikes.
-        adjusted_score: engine score used to grade SL/target sizing.
-            Grade A (>= 65): 30% SL / 60% target.
-            Grade B (< 65 or unknown): 25% SL / 45% target.
+        adjusted_score: engine score used to determine Grade A/B sizing.
+        intraday_risk_cfg: risk config from signal.yaml intraday_risk section.
         """
         if not chain_entries:
             return None
@@ -81,12 +91,11 @@ class OptionStrikeSelector:
             e for e in chain_entries
             if str(e.get("option_type", "")).upper() == opt_type
             and float(e.get("ltp") or 0) >= _MIN_LTP
-            and int(e.get("oi") or 0) > 0   # exclude ghost/adjusted contracts with zero OI
+            and int(e.get("oi") or 0) > 0
         ]
         if not side_entries:
             return None
 
-        # Choose preferred expiry within DTE window
         nearest_expiry = self._nearest_expiry(side_entries, min_dte=min_dte, max_dte=max_dte)
         expiry_entries = [
             e for e in side_entries
@@ -95,11 +104,10 @@ class OptionStrikeSelector:
         if not expiry_entries:
             return None
 
-        # ATM = strike closest to current price
-        strike_entry = min(
-            expiry_entries,
-            key=lambda e: abs(float(e.get("strike") or 0) - underlying_price),
-        )
+        # Phase 3: rank candidates by OI within ATM ± _MAX_STRIKE_SPREAD
+        strike_entry = self._best_contract(expiry_entries, underlying_price)
+        if strike_entry is None:
+            return None
 
         entry  = float(strike_entry.get("ltp") or 0)
         strike = float(strike_entry.get("strike") or 0)
@@ -110,11 +118,8 @@ class OptionStrikeSelector:
         if entry < _MIN_LTP:
             return None
 
-        # Grade A/B sizing: high-conviction signals get wider targets; lower-conviction tighter
-        _grade_a = adjusted_score is not None and adjusted_score >= _GRADE_A_MIN
-        sl_pct     = _SL_PCT_A     if _grade_a else _SL_PCT_B
-        target_pct = _TARGET_PCT_A if _grade_a else _TARGET_PCT_B
-
+        # Grade A/B sizing from config (Phase 5)
+        sl_pct, target_pct = self._grade_sizing(adjusted_score, intraday_risk_cfg)
         sl     = round(entry * (1 - sl_pct), 2)
         target = round(entry * (1 + target_pct), 2)
 
@@ -133,6 +138,65 @@ class OptionStrikeSelector:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _grade_sizing(
+        score: float | None,
+        cfg: "IntradayRiskConfig | None",
+    ) -> tuple[float, float]:
+        """Return (sl_pct, target_pct) based on signal grade."""
+        if cfg is not None:
+            grade_a = score is not None and score >= cfg.grade_a_min_score
+            sl     = cfg.grade_a_sl_pct     if grade_a else cfg.grade_b_sl_pct
+            target = cfg.grade_a_target_pct if grade_a else cfg.grade_b_target_pct
+        else:
+            grade_a = score is not None and score >= _DEFAULT_GRADE_A_MIN
+            sl     = _DEFAULT_SL_A     if grade_a else _DEFAULT_SL_B
+            target = _DEFAULT_TARGET_A if grade_a else _DEFAULT_TARGET_B
+        return sl, target
+
+    @staticmethod
+    def _best_contract(
+        entries: list[dict[str, Any]],
+        atm_price: float,
+    ) -> dict[str, Any] | None:
+        """Pick the most liquid contract within ATM ± _MAX_STRIKE_SPREAD strikes.
+
+        Ranking: primary = OI descending (best liquidity proxy available),
+        secondary = proximity to ATM (prefer at-the-money for delta).
+        Falls back to absolute nearest if no entry meets the OI floor.
+        """
+        if not entries:
+            return None
+
+        strikes = sorted({float(e.get("strike") or 0) for e in entries})
+        if not strikes:
+            return None
+
+        atm_strike = min(strikes, key=lambda s: abs(s - atm_price))
+        atm_idx = strikes.index(atm_strike)
+        low_idx  = max(0, atm_idx - _MAX_STRIKE_SPREAD)
+        high_idx = min(len(strikes) - 1, atm_idx + _MAX_STRIKE_SPREAD)
+        candidate_strikes = set(strikes[low_idx : high_idx + 1])
+
+        candidates = [
+            e for e in entries
+            if float(e.get("strike") or 0) in candidate_strikes
+            and int(e.get("oi") or 0) >= _MIN_OI_FLOOR
+        ]
+
+        if not candidates:
+            # Fallback: absolute ATM ignoring OI floor
+            return min(entries, key=lambda e: abs(float(e.get("strike") or 0) - atm_price))
+
+        # Rank by (OI desc, distance to ATM asc)
+        return max(
+            candidates,
+            key=lambda e: (
+                int(e.get("oi") or 0),
+                -abs(float(e.get("strike") or 0) - atm_price),
+            ),
+        )
+
+    @staticmethod
     def _expiry_str(entry: dict[str, Any]) -> str:
         raw = entry.get("expiry")
         if isinstance(raw, date):
@@ -144,8 +208,8 @@ class OptionStrikeSelector:
     def _nearest_expiry(
         self,
         entries: list[dict[str, Any]],
-        min_dte: int = 2,
-        max_dte: int = 15,
+        min_dte: int = 0,
+        max_dte: int = 3,
     ) -> str:
         today = datetime.utcnow().date()
         expiries = sorted(
@@ -162,22 +226,22 @@ class OptionStrikeSelector:
         if in_window:
             return in_window[0]
 
-        # 2. Fall back to nearest with DTE >= min_dte (avoids same/next-day gamma)
+        # 2. Fall back to nearest with DTE >= min_dte
         beyond_min = [e for e in expiries if _dte(e) >= min_dte]
         if beyond_min:
             return beyond_min[0]
 
-        # 3. Final fallback: absolute nearest (preserves existing behaviour)
+        # 3. Final fallback: absolute nearest
         return expiries[0]
 
     @staticmethod
     def _contract_suffix(expiry_str: str, strike: float, opt_type: str) -> str:
-        """Build the Kite-style suffix: DDMMMYYYY → 26JUN2026 → 26JUN1750CE."""
+        """Build Kite-style suffix: 26JUN26 + strike + CE/PE."""
         try:
             d = date.fromisoformat(expiry_str)
-            month = d.strftime("%b").upper()   # JUN
+            month = d.strftime("%b").upper()
             day   = f"{d.day:02d}"
-            year  = str(d.year)[2:]            # last 2 digits
+            year  = str(d.year)[2:]
             strike_str = int(strike) if strike == int(strike) else strike
             return f"{day}{month}{year}{strike_str}{opt_type}"
         except Exception:

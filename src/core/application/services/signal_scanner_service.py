@@ -626,24 +626,56 @@ class SignalScannerService:
                     except Exception:
                         pass
                 if chain_data and chain_data.get("entries"):
-                    # Hard gate: IV percentile > 75 = buying options is structurally expensive
-                    # Option buyers face IV crush risk when IV is already at 75th+ percentile
+                    # Phase 4: DTE-aware IV percentile gate.
+                    # On expiry day (0-DTE), IV percentile is structurally elevated (80-90th pct)
+                    # due to theta collapse — applying the same 75 threshold would reject every
+                    # valid expiry-day trade. Threshold rises as DTE falls.
                     _iv_pct = chain_data.get("iv_percentile")
-                    if _iv_pct is not None and _iv_pct > 75:
-                        _log.warning(
-                            "signal_scanner.iv_too_expensive_skip symbol=%s iv_percentile=%.1f",
-                            symbol, _iv_pct,
-                        )
-                        return "iv_too_expensive"
+                    if _iv_pct is not None:
+                        _today = datetime.utcnow().date()
+                        _dtes = []
+                        for _e in chain_data.get("entries", []):
+                            _raw = _e.get("expiry")
+                            try:
+                                if isinstance(_raw, str):
+                                    _exp = date.fromisoformat(_raw[:10])
+                                elif hasattr(_raw, "year"):
+                                    _exp = date(_raw.year, _raw.month, _raw.day)
+                                else:
+                                    continue
+                                _d = (_exp - _today).days
+                                if _d >= 0:
+                                    _dtes.append(_d)
+                            except Exception:
+                                pass
+                        _near_dte = min(_dtes) if _dtes else None
+                        # IV threshold by nearest available DTE
+                        if _near_dte == 0:
+                            _iv_limit = 95   # expiry day: only block structurally extreme IV
+                        elif _near_dte == 1:
+                            _iv_limit = 88
+                        elif _near_dte in (2, 3):
+                            _iv_limit = 80
+                        else:
+                            _iv_limit = 75   # positional: original threshold
+                        if _iv_pct > _iv_limit:
+                            _log.warning(
+                                "signal_scanner.iv_too_expensive_skip symbol=%s "
+                                "iv_percentile=%.1f limit=%d dte=%s",
+                                symbol, _iv_pct, _iv_limit, _near_dte,
+                            )
+                            return "iv_too_expensive"
 
-                    _dte_cfg = self._signal_config.option_dte if self._signal_config else None
+                    _dte_cfg  = self._signal_config.option_dte if self._signal_config else None
+                    _risk_cfg = self._signal_config.intraday_risk if self._signal_config else None
                     option_play = self._strike_selector.select(
                         direction=result.direction,
                         underlying_price=features.get("close") or 0.0,
                         chain_entries=chain_data["entries"],
-                        min_dte=_dte_cfg.min if _dte_cfg else 2,
-                        max_dte=_dte_cfg.max if _dte_cfg else 15,
+                        min_dte=_dte_cfg.min if _dte_cfg else 0,
+                        max_dte=_dte_cfg.max if _dte_cfg else 3,
                         adjusted_score=result.adjusted_score,
+                        intraday_risk_cfg=_risk_cfg,
                     )
                     if option_play:
                         _log.info(
