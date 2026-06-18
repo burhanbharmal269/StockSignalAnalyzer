@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Callable, Any
 
@@ -80,6 +80,11 @@ class KiteMarketDataProvider(IMarketDataProvider):
         self._ws: Any = None            # KiteConnect WebSocket
         self._tick_callbacks: dict[str, Callable] = {}
         self._token_map: dict[str, int] = {}  # symbol → instrument_token
+        # NFO instruments cached to avoid downloading ~5MB per symbol call.
+        # Refreshed once per hour — stale cache is acceptable for strike selection.
+        self._nfo_instruments: list[dict] = []
+        self._nfo_instruments_ts: datetime | None = None
+        self._nfo_lock = asyncio.Lock()
 
     @property
     def provider_name(self) -> str:
@@ -186,20 +191,45 @@ class KiteMarketDataProvider(IMarketDataProvider):
             _log.warning("kite.ltp failed: %s", exc)
             return {}
 
+    async def _get_nfo_instruments(self) -> list[dict]:
+        """Return NFO instruments, refreshing the cache at most once per hour.
+
+        A lock serializes concurrent callers so the ~5MB download happens once,
+        not once per symbol in the option chain poller.
+        """
+        from datetime import timedelta
+        now = datetime.now(UTC)
+        if self._nfo_instruments and self._nfo_instruments_ts and \
+                (now - self._nfo_instruments_ts) < timedelta(hours=1):
+            return self._nfo_instruments
+        async with self._nfo_lock:
+            # Re-check inside the lock — another waiter may have refreshed already.
+            if self._nfo_instruments and self._nfo_instruments_ts and \
+                    (now - self._nfo_instruments_ts) < timedelta(hours=1):
+                return self._nfo_instruments
+            loop = asyncio.get_event_loop()
+            kite = self._get_kite()
+            try:
+                instruments: list[dict] = await loop.run_in_executor(
+                    None, lambda: kite.instruments("NFO")
+                )
+                self._nfo_instruments = instruments
+                self._nfo_instruments_ts = now
+                _log.info("kite.nfo_instruments_refreshed count=%d", len(instruments))
+                return instruments
+            except Exception as exc:
+                _log.warning("kite.instruments NFO failed: %s", exc)
+                return self._nfo_instruments  # return stale cache on error
+
     async def get_option_chain(
         self,
         underlying: str,
         expiry: date | None = None,
     ) -> list[OptionChainEntry]:
+        await self._ensure_authenticated()
         loop = asyncio.get_event_loop()
         kite = self._get_kite()
-        try:
-            instruments: list[dict] = await loop.run_in_executor(
-                None, lambda: kite.instruments("NFO")
-            )
-        except Exception as exc:
-            _log.warning("kite.instruments failed: %s", exc)
-            return []
+        instruments = await self._get_nfo_instruments()
 
         chain = [
             i for i in instruments

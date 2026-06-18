@@ -70,6 +70,7 @@ class OptionStrikeSelector:
             e for e in chain_entries
             if str(e.get("option_type", "")).upper() == opt_type
             and float(e.get("ltp") or 0) >= _MIN_LTP
+            and int(e.get("oi") or 0) > 0   # exclude ghost/adjusted contracts with zero OI
         ]
         if not side_entries:
             return None
