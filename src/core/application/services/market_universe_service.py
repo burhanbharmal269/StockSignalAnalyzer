@@ -136,6 +136,9 @@ _FO_EXTRA = list({
 })
 
 
+_KITE_INSTRUMENTS_URL = "https://api.kite.trade/instruments"
+
+
 class MarketUniverseService:
     def __init__(
         self,
@@ -258,6 +261,72 @@ class MarketUniverseService:
         except Exception as exc:
             _log.warning("universe.sync_from_kite failed: %s", exc)
             return 0
+
+    async def sync_fo_from_kite_instruments(self) -> dict[str, int]:
+        """Cross-reference our universe against Kite's public instrument master.
+
+        Downloads https://api.kite.trade/instruments (no API key needed, updated
+        daily by Kite), filters to segment=NFO-FUT to get the authoritative list
+        of stocks with active F&O contracts, then:
+          - marks symbols in our universe that ARE in NFO-FUT as is_fo=True
+          - marks symbols that are NOT in NFO-FUT as is_fo=False (cash-only)
+
+        Returns {"promoted": N, "demoted": N, "unchanged": N}.
+        """
+        try:
+            import io
+            import csv
+            import asyncio
+            import urllib.request
+
+            loop = asyncio.get_event_loop()
+
+            def _fetch_csv() -> set[str]:
+                with urllib.request.urlopen(_KITE_INSTRUMENTS_URL, timeout=30) as resp:
+                    text = resp.read().decode("utf-8")
+                reader = csv.DictReader(io.StringIO(text))
+                active_fo_names: set[str] = set()
+                for row in reader:
+                    # NFO-FUT: stocks + indices with futures (implies options too)
+                    # NFO-OPT: stocks that may have lost futures but still have options
+                    if row.get("segment") in ("NFO-FUT", "NFO-OPT"):
+                        name = row.get("name", "").strip()
+                        if name:
+                            active_fo_names.add(name)
+                return active_fo_names
+
+            nfo_fut: set[str] = await loop.run_in_executor(None, _fetch_csv)
+            _log.info("universe.kite_instruments_fetched nfo_active_count=%d", len(nfo_fut))
+
+        except Exception as exc:
+            _log.warning("universe.kite_instruments_fetch_failed: %s — skipping F&O sync", exc)
+            return {"promoted": 0, "demoted": 0, "unchanged": 0}
+
+        all_symbols = await self._repo.get_active()
+        promoted = demoted = unchanged = 0
+
+        for sym in all_symbols:
+            if sym.is_index:
+                # Indices are always kept as is_fo=True regardless of NFO-FUT list
+                continue
+            in_nfo = sym.symbol in nfo_fut
+            if in_nfo and not sym.is_fo:
+                sym.is_fo = True
+                promoted += 1
+            elif not in_nfo and sym.is_fo:
+                sym.is_fo = False
+                demoted += 1
+            else:
+                unchanged += 1
+
+        if promoted + demoted > 0:
+            await self._repo.upsert_many(all_symbols)
+
+        _log.info(
+            "universe.fo_sync_done promoted=%d demoted=%d unchanged=%d",
+            promoted, demoted, unchanged,
+        )
+        return {"promoted": promoted, "demoted": demoted, "unchanged": unchanged}
 
     async def get_fo_symbols(self) -> list[str]:
         syms = await self._repo.get_active(fo_only=True)

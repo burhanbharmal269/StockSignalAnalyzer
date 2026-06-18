@@ -198,6 +198,19 @@ def create_app() -> FastAPI:
         except Exception:
             logger.warning("account_state.seed_failed — Risk Engine may reject signals")
 
+        # Sync F&O universe against Kite public instrument master (no auth needed).
+        # Downloads https://api.kite.trade/instruments, filters NFO-FUT segment,
+        # and updates is_fo flags so only stocks with active contracts are scanned.
+        universe_svc = container.market_universe_service()
+        try:
+            fo_sync = await universe_svc.sync_fo_from_kite_instruments()
+            logger.info(
+                "universe.fo_sync_done promoted=%d demoted=%d unchanged=%d",
+                fo_sync["promoted"], fo_sync["demoted"], fo_sync["unchanged"],
+            )
+        except Exception:
+            logger.warning("universe.fo_sync_failed — using cached is_fo flags from DB")
+
         # Session lifecycle: validate stored Kite session on startup
         session_expiry_watcher = container.session_expiry_watcher()
         await session_expiry_watcher.startup_validate()
