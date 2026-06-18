@@ -5,7 +5,9 @@ from __future__ import annotations
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import select, text
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.domain.entities.signal import Signal
@@ -161,11 +163,23 @@ class SqlAlchemySignalRepository(ISignalRepository):
             return signals
 
     async def get_active(self) -> list[Signal]:
-        terminal_values = [s.value for s in _TERMINAL_STATES]
+        # Include EXPIRED from last 24h so users can review today's closed
+        # signals after market close (MarketCloseExitService expires at 15:20).
+        yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
         async with self._session_factory() as session:
             result = await session.execute(
                 select(SignalOrm)
-                .where(SignalOrm.state.notin_(terminal_values))
+                .where(
+                    or_(
+                        SignalOrm.state.notin_(
+                            [s.value for s in _TERMINAL_STATES]
+                        ),
+                        and_(
+                            SignalOrm.state == SignalState.EXPIRED.value,
+                            SignalOrm.created_at >= yesterday,
+                        ),
+                    )
+                )
                 .order_by(SignalOrm.created_at.desc())
             )
             signals = [_to_domain(r) for r in result.scalars()]

@@ -241,7 +241,7 @@ export function SignalsView() {
             {foOnly ? "F&O Only" : "All Signals"}
           </button>
           <div className="w-px bg-border" />
-          {(["RISK_PENDING", "RISK_APPROVED", "RISK_REJECTED", "EXECUTED"] as const).map((s) => (
+          {(["RISK_PENDING", "RISK_APPROVED", "RISK_REJECTED", "EXPIRED", "EXECUTED"] as const).map((s) => (
             <button
               key={s}
               onClick={() => setStateFilter((f) => (f === s ? "" : s))}
@@ -263,7 +263,13 @@ export function SignalsView() {
         <DataTable
           columns={columns}
           data={signals}
-          emptyMessage={foOnly ? "No F&O signals with contracts yet" : "No signals"}
+          emptyMessage={
+            foOnly
+              ? stateFilter
+                ? `No ${stateFilter.replace("RISK_", "")} signals with contracts`
+                : "No F&O signals with contracts — try disabling F&O filter or market may be closed"
+              : "No signals"
+          }
         />
       )}
     </div>
