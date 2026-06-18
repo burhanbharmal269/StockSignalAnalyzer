@@ -32,9 +32,12 @@ from typing import Any
 
 _log = logging.getLogger(__name__)
 
-_SL_PCT     = 0.30   # stop-loss  = 30% of option premium
-_TARGET_PCT = 0.60   # target     = 60% of option premium (2:1 R:R)
-_MIN_LTP    = 1.0    # ignore strikes with LTP below this (illiquid)
+_SL_PCT_A     = 0.30   # Grade A (score >= 65): full 30% SL — high conviction
+_TARGET_PCT_A = 0.60   # Grade A: 60% target — 2:1 R:R
+_SL_PCT_B     = 0.25   # Grade B (score 40-64): tighter 25% SL — lower conviction
+_TARGET_PCT_B = 0.45   # Grade B: 45% target — 1.8:1 R:R
+_GRADE_A_MIN  = 65.0   # score threshold for Grade A
+_MIN_LTP      = 1.0    # ignore strikes with LTP below this (illiquid)
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,7 @@ class OptionStrikeSelector:
         chain_entries: list[dict[str, Any]],
         min_dte: int = 2,
         max_dte: int = 15,
+        adjusted_score: float | None = None,
     ) -> OptionPlay | None:
         """Return the best option play or None if chain is empty / illiquid.
 
@@ -65,6 +69,9 @@ class OptionStrikeSelector:
             strike, option_type, ltp, oi, expiry (date or str), underlying
         min_dte / max_dte: preferred DTE window. Falls back gracefully so a
             contract is always returned when the chain has any liquid strikes.
+        adjusted_score: engine score used to grade SL/target sizing.
+            Grade A (>= 65): 30% SL / 60% target.
+            Grade B (< 65 or unknown): 25% SL / 45% target.
         """
         if not chain_entries:
             return None
@@ -103,8 +110,13 @@ class OptionStrikeSelector:
         if entry < _MIN_LTP:
             return None
 
-        sl     = round(entry * (1 - _SL_PCT), 2)
-        target = round(entry * (1 + _TARGET_PCT), 2)
+        # Grade A/B sizing: high-conviction signals get wider targets; lower-conviction tighter
+        _grade_a = adjusted_score is not None and adjusted_score >= _GRADE_A_MIN
+        sl_pct     = _SL_PCT_A     if _grade_a else _SL_PCT_B
+        target_pct = _TARGET_PCT_A if _grade_a else _TARGET_PCT_B
+
+        sl     = round(entry * (1 - sl_pct), 2)
+        target = round(entry * (1 + target_pct), 2)
 
         return OptionPlay(
             option_type=opt_type,

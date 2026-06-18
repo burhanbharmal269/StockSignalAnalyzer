@@ -600,6 +600,18 @@ class SignalScannerService:
             result.is_duplicate,
         )
 
+        # Hard gate: RSI extreme — buying CE into overbought / PE into oversold
+        # RSI > 75 on LONG or < 25 on SHORT = chasing exhausted move on 15m candles
+        if result.accepted and result.direction in ("LONG", "SHORT"):
+            _rsi = features.get("rsi_14", 50)
+            if (result.direction == "LONG" and _rsi > 75) or \
+               (result.direction == "SHORT" and _rsi < 25):
+                _log.warning(
+                    "signal_scanner.rsi_extreme_skip symbol=%s direction=%s rsi=%.1f",
+                    symbol, result.direction, _rsi,
+                )
+                return "rsi_extreme"
+
         # ── TRACE 6b: Option contract selection ───────────────────────────
         option_play = None
         if result.accepted and result.direction in ("LONG", "SHORT") and self._option_chain is not None:
@@ -614,6 +626,16 @@ class SignalScannerService:
                     except Exception:
                         pass
                 if chain_data and chain_data.get("entries"):
+                    # Hard gate: IV percentile > 75 = buying options is structurally expensive
+                    # Option buyers face IV crush risk when IV is already at 75th+ percentile
+                    _iv_pct = chain_data.get("iv_percentile")
+                    if _iv_pct is not None and _iv_pct > 75:
+                        _log.warning(
+                            "signal_scanner.iv_too_expensive_skip symbol=%s iv_percentile=%.1f",
+                            symbol, _iv_pct,
+                        )
+                        return "iv_too_expensive"
+
                     _dte_cfg = self._signal_config.option_dte if self._signal_config else None
                     option_play = self._strike_selector.select(
                         direction=result.direction,
@@ -621,6 +643,7 @@ class SignalScannerService:
                         chain_entries=chain_data["entries"],
                         min_dte=_dte_cfg.min if _dte_cfg else 2,
                         max_dte=_dte_cfg.max if _dte_cfg else 15,
+                        adjusted_score=result.adjusted_score,
                     )
                     if option_play:
                         _log.info(

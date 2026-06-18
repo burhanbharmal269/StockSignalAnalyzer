@@ -121,7 +121,14 @@ oi_buildup:
   # Score caps per quadrant type
   max_strong_score: 25.0
   max_weak_score: 15.0
-  ambiguous_floor: 8.0
+  ambiguous_floor: 3.0  # reduced from 8.0: ambiguous OI should not score high
+
+  # OFI confluence bonus — when BOTH OI quadrant AND PCR confirm the same direction,
+  # institutions are stacking evidence from two independent flows (price/OI + options market).
+  # Research: dual confirmation materially improves win rate in NSE F&O positional setups.
+  ofi_bullish_pcr_min: 1.0   # Long Build-up + PCR >= this = institutions hedging = confluence
+  ofi_bearish_pcr_max: 0.9   # Short Build-up + PCR <= this = call euphoria = confluence
+  ofi_confluence_bonus: 3.0  # pts added to winning side when OI + PCR confirm direction
 
   # PCR adjustments
   pcr_bullish_low: 0.7

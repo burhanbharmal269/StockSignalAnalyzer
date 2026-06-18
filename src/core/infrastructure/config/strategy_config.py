@@ -76,6 +76,9 @@ class _OIBuildupConfig(BaseModel):
     max_pain_distance_pct: float = Field(gt=0)
     max_pain_adjustment: float
     dte_max_pain_dominant: int = Field(gt=0)
+    ofi_bullish_pcr_min: float = Field(gt=0)
+    ofi_bearish_pcr_max: float = Field(gt=0)
+    ofi_confluence_bonus: float = Field(ge=0)
 
 
 class _TrendConfig(BaseModel):

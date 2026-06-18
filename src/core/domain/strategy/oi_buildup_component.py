@@ -72,13 +72,16 @@ class OIBuildupComponent(IScoreComponent):
         # Step 5: FII net position adjustment
         long_fii, short_fii = self._fii_adjustment(context.fii_net_contracts, cfg)
 
+        # Step 6: OFI confluence bonus — both OI quadrant AND PCR confirm direction
+        long_ofi, short_ofi = self._ofi_confluence(quadrant, context.features.pcr, cfg)
+
         long_score = max(
             0.0,
-            min(float(_MAX_WEIGHT), long_base + long_pcr + long_mp + long_fii),
+            min(float(_MAX_WEIGHT), long_base + long_pcr + long_mp + long_fii + long_ofi),
         )
         short_score = max(
             0.0,
-            min(float(_MAX_WEIGHT), short_base + short_pcr + short_mp + short_fii),
+            min(float(_MAX_WEIGHT), short_base + short_pcr + short_mp + short_fii + short_ofi),
         )
 
         direction, conviction = _direction_and_conviction(long_score, short_score, _MAX_WEIGHT)
@@ -209,6 +212,22 @@ class OIBuildupComponent(IScoreComponent):
             # Max pain is below → price needs to go down → bearish
             return 0.0, cfg.max_pain_adjustment
 
+        return 0.0, 0.0
+
+    @staticmethod
+    def _ofi_confluence(
+        quadrant: str, pcr: float | None, cfg: object
+    ) -> tuple[float, float]:
+        """Return (long_adj, short_adj). Fires only when OI quadrant AND PCR agree."""
+        if pcr is None:
+            return 0.0, 0.0
+        bonus = cfg.ofi_confluence_bonus
+        # Long Build-up + PCR indicating put protection = dual institutional bullish
+        if quadrant == "Long Build-up" and pcr >= cfg.ofi_bullish_pcr_min:
+            return bonus, 0.0
+        # Short Build-up + call euphoria (low PCR) = dual institutional bearish
+        if quadrant == "Short Build-up" and pcr <= cfg.ofi_bearish_pcr_max:
+            return 0.0, bonus
         return 0.0, 0.0
 
     @staticmethod
