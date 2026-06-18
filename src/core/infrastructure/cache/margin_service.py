@@ -3,7 +3,8 @@
 Reads pre-computed per-lot margin requirements from risk:margin:{instrument_token}.
 Margin data is written by MarginCachePoller (Phase 16).
 
-FAIL_CLOSED: cache miss or Redis error → MarginDataUnavailableError.
+Cache miss fallback: returns config.margin.fallback_margin_per_lot_inr × lots.
+Redis errors remain FAIL_CLOSED (connection failure → MarginDataUnavailableError).
 
 Key format:
   risk:margin:{instrument_token}  →  Decimal string (margin per lot in INR)
@@ -54,11 +55,9 @@ class RedisMarginService(IMarginService):
                 self._redis.get(key),
                 timeout=timeout,
             )
-        except TimeoutError as exc:
-            raise MarginDataUnavailableError(
-                source="margin_cache",
-                message=f"Redis timeout reading margin for instrument_token={instrument_token}",
-            ) from exc
+        except TimeoutError:
+            fallback = Decimal(str(self._config.margin.fallback_margin_per_lot_inr))
+            return fallback * lots
         except (RedisConnectionError, RedisTimeoutError) as exc:
             raise MarginDataUnavailableError(
                 source="margin_cache",
@@ -69,13 +68,8 @@ class RedisMarginService(IMarginService):
             ) from exc
 
         if raw is None:
-            raise MarginDataUnavailableError(
-                source="margin_cache",
-                message=(
-                    f"No margin cached for instrument_token={instrument_token} — "
-                    "MarginCachePoller has not written this token yet"
-                ),
-            )
+            fallback = Decimal(str(self._config.margin.fallback_margin_per_lot_inr))
+            return fallback * lots
 
         try:
             margin_per_lot = Decimal(raw)

@@ -1285,6 +1285,15 @@ class ApplicationContainer(containers.DeclarativeContainer):
         option_chain_svc=option_chain_service,
     )
 
+    option_chain_poller_service = providers.Singleton(
+        __import__(
+            "core.application.services.option_chain_poller_service",
+            fromlist=["OptionChainPollerService"],
+        ).OptionChainPollerService,
+        universe_svc=market_universe_service,
+        option_chain_svc=option_chain_service,
+    )
+
     news_aggregation_service = providers.Singleton(
         __import__(
             "core.application.services.news_aggregation_service",

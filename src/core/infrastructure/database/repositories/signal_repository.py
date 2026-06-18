@@ -84,13 +84,16 @@ def _to_domain(row: SignalOrm) -> Signal:
 
 
 async def _attach_prices(session: AsyncSession, signals: list[Signal]) -> None:
-    """Bulk-fetch entry/sl/target from signal_analytics and attach to each Signal."""
+    """Bulk-fetch entry/sl/target + option fields from signal_analytics."""
     if not signals:
         return
     ids = [str(s.signal_id) for s in signals]
     result = await session.execute(
         text("""
-            SELECT DISTINCT ON (signal_id) signal_id, entry_price, stop_loss_price, target_price
+            SELECT DISTINCT ON (signal_id)
+                signal_id, entry_price, stop_loss_price, target_price,
+                option_type, option_strike, option_expiry, option_symbol,
+                option_entry, option_sl, option_target
             FROM signal_analytics
             WHERE signal_id = ANY(:ids)
             ORDER BY signal_id, id DESC
@@ -101,9 +104,16 @@ async def _attach_prices(session: AsyncSession, signals: list[Signal]) -> None:
     for sig in signals:
         row = price_map.get(str(sig.signal_id))
         if row:
-            sig.entry_price = float(row["entry_price"]) if row["entry_price"] is not None else None
-            sig.stop_loss_price = float(row["stop_loss_price"]) if row["stop_loss_price"] is not None else None
-            sig.target_price = float(row["target_price"]) if row["target_price"] is not None else None
+            sig.entry_price      = float(row["entry_price"])      if row["entry_price"]      is not None else None
+            sig.stop_loss_price  = float(row["stop_loss_price"])  if row["stop_loss_price"]  is not None else None
+            sig.target_price     = float(row["target_price"])     if row["target_price"]     is not None else None
+            sig.option_type      = row["option_type"]
+            sig.option_strike    = float(row["option_strike"])    if row["option_strike"]    is not None else None
+            sig.option_expiry    = str(row["option_expiry"])      if row["option_expiry"]    is not None else None
+            sig.option_symbol    = row["option_symbol"]
+            sig.option_entry     = float(row["option_entry"])     if row["option_entry"]     is not None else None
+            sig.option_sl        = float(row["option_sl"])        if row["option_sl"]        is not None else None
+            sig.option_target    = float(row["option_target"])    if row["option_target"]    is not None else None
 
 
 class SqlAlchemySignalRepository(ISignalRepository):
@@ -142,7 +152,9 @@ class SqlAlchemySignalRepository(ISignalRepository):
     async def get_by_state(self, state: SignalState) -> list[Signal]:
         async with self._session_factory() as session:
             result = await session.execute(
-                select(SignalOrm).where(SignalOrm.state == state.value)
+                select(SignalOrm)
+                .where(SignalOrm.state == state.value)
+                .order_by(SignalOrm.created_at.desc())
             )
             signals = [_to_domain(r) for r in result.scalars()]
             await _attach_prices(session, signals)
@@ -152,7 +164,9 @@ class SqlAlchemySignalRepository(ISignalRepository):
         terminal_values = [s.value for s in _TERMINAL_STATES]
         async with self._session_factory() as session:
             result = await session.execute(
-                select(SignalOrm).where(SignalOrm.state.notin_(terminal_values))
+                select(SignalOrm)
+                .where(SignalOrm.state.notin_(terminal_values))
+                .order_by(SignalOrm.created_at.desc())
             )
             signals = [_to_domain(r) for r in result.scalars()]
             await _attach_prices(session, signals)

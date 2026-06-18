@@ -44,8 +44,9 @@ class SqlAlchemySignalPerformanceRepository(ISignalPerformanceRepository):
                 select(
                     func.count().label("total"),
                     func.sum(
-                        func.cast(
-                            SignalPerformanceStatsOrm.outcome == "WIN", type_=None
+                        case(
+                            (SignalPerformanceStatsOrm.outcome == "WIN", 1),
+                            else_=0,
                         )
                     ).label("wins"),
                 ).where(
@@ -76,8 +77,9 @@ class SqlAlchemySignalPerformanceRepository(ISignalPerformanceRepository):
                 select(
                     func.count().label("total"),
                     func.sum(
-                        func.cast(
-                            SignalPerformanceStatsOrm.outcome == "WIN", type_=None
+                        case(
+                            (SignalPerformanceStatsOrm.outcome == "WIN", 1),
+                            else_=0,
                         )
                     ).label("wins"),
                 ).where(

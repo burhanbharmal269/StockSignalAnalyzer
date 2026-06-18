@@ -246,8 +246,20 @@ def create_app() -> FastAPI:
 
         auto_kill_switch = container.auto_kill_switch_service()
 
-        signal_scanner  = container.signal_scanner_service()
-        outcome_tracker = container.signal_outcome_tracker_service()
+        signal_scanner       = container.signal_scanner_service()
+        outcome_tracker      = container.signal_outcome_tracker_service()
+        option_chain_poller  = container.option_chain_poller_service()
+
+        # Seed historical candles for F&O index underlyings before the scanner starts.
+        # Kite stores them under "NIFTY 50" / "NIFTY BANK" etc., but our _resolve_token()
+        # handles that mapping — this just ensures the DB is populated before first scan.
+        _FO_INDICES = ["NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"]
+        historical_svc = container.historical_data_service()
+        try:
+            counts = await historical_svc.bulk_fetch(_FO_INDICES, timeframes=["15m"])
+            logger.info("startup.index_candles_seeded counts=%s", counts)
+        except Exception:
+            logger.warning("startup.index_candles_seed_failed — NIFTY/BANKNIFTY may skip first scan")
 
         registry.register("portfolio_monitor", portfolio_monitor.run)
         registry.register("dead_mans_switch", dead_mans_switch.run)
@@ -256,6 +268,7 @@ def create_app() -> FastAPI:
         registry.register("broker_reconciliation", _broker_reconciliation_loop)
         registry.register("auto_kill_switch", auto_kill_switch.run)
         registry.register("session_expiry_watcher", session_expiry_watcher.run)
+        registry.register("option_chain_poller", option_chain_poller.run)
         registry.register("signal_scanner", signal_scanner.run)
         registry.register("signal_outcome_tracker", outcome_tracker.run)
         await registry.start()

@@ -355,11 +355,13 @@ class SignalScannerService:
         analytics_svc: "SignalAnalyticsService | None" = None,
         option_chain_svc: "OptionChainService | None" = None,
     ) -> None:
+        from core.application.services.option_strike_selector import OptionStrikeSelector
         self._universe        = universe_svc
         self._history         = historical_svc
         self._engine          = signal_engine
         self._analytics       = analytics_svc
         self._option_chain    = option_chain_svc
+        self._strike_selector = OptionStrikeSelector()
         self._running         = False
         # Per-symbol PCR history (last two readings) for trend detection.
         # Format: {symbol: [older_pcr, current_pcr]}
@@ -487,6 +489,14 @@ class SignalScannerService:
         sym_type = "INDEX" if sym.is_index else "STOCK"
 
         # ── TRACE 2: Historical candles ───────────────────────────────
+        # Gap-fill: fetch any new candles since last stored timestamp before reading.
+        # fetch_and_store is lightweight after the initial seed — it only requests
+        # the delta from last_stored_ts+1m to now, typically 1-2 new candles per cycle.
+        try:
+            await self._history.fetch_and_store(symbol, "15m")
+        except Exception as _fe:
+            _log.debug("signal_scanner.candle_fetch_failed symbol=%s: %s", symbol, _fe)
+
         candles = await self._history.get_latest(symbol, "15m", _CANDLE_LIMIT)
         if len(candles) < 20:
             _log.debug(
@@ -587,6 +597,36 @@ class SignalScannerService:
             result.is_duplicate,
         )
 
+        # ── TRACE 6b: Option contract selection ───────────────────────────
+        option_play = None
+        if result.accepted and result.direction in ("LONG", "SHORT") and self._option_chain is not None:
+            try:
+                chain_data = await self._option_chain.get_latest(symbol)
+                if not chain_data or not chain_data.get("entries"):
+                    # Not in poller snapshot yet — fetch on-demand for this signal
+                    _log.debug("signal_scanner.option_chain_on_demand symbol=%s", symbol)
+                    try:
+                        await self._option_chain.fetch_and_store(symbol)
+                        chain_data = await self._option_chain.get_latest(symbol)
+                    except Exception:
+                        pass
+                if chain_data and chain_data.get("entries"):
+                    option_play = self._strike_selector.select(
+                        direction=result.direction,
+                        underlying_price=features.get("close") or 0.0,
+                        chain_entries=chain_data["entries"],
+                    )
+                    if option_play:
+                        _log.info(
+                            "signal_scanner.option_play symbol=%s %s %s@%.0f "
+                            "entry=%.2f sl=%.2f target=%.2f",
+                            symbol, option_play.option_type, option_play.option_symbol,
+                            option_play.option_strike,
+                            option_play.entry, option_play.sl, option_play.target,
+                        )
+            except Exception as exc:
+                _log.debug("signal_scanner.option_play_failed symbol=%s: %s", symbol, exc)
+
         # ── TRACE 7: Signal analytics — always record (execution-mode independent) ──
         if self._analytics is not None:
             await self._analytics.record(
@@ -597,6 +637,7 @@ class SignalScannerService:
                 request=req,
                 result=result,
                 features=features,
+                option_play=option_play,
             )
 
         if result.accepted:

@@ -70,6 +70,15 @@ class Signal:
     stop_loss_price: float | None = field(default=None)
     target_price: float | None = field(default=None)
 
+    # Option contract recommendation — populated from signal_analytics join
+    option_type: str | None = field(default=None)    # "CE" or "PE"
+    option_strike: float | None = field(default=None)
+    option_expiry: str | None = field(default=None)  # ISO date string
+    option_symbol: str | None = field(default=None)  # e.g. HDFCBANK26JUN1750CE
+    option_entry: float | None = field(default=None)
+    option_sl: float | None = field(default=None)
+    option_target: float | None = field(default=None)
+
     created_at: datetime = field(
         default_factory=lambda: datetime.now(UTC)
     )

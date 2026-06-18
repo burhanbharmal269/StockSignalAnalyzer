@@ -14,7 +14,7 @@ Used by:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 if TYPE_CHECKING:
     from core.application.services.execution_lock_service import ExecutionLockService
+    from core.application.services.option_strike_selector import OptionPlay
     from core.domain.value_objects.signal_request import SignalRequest
     from core.domain.value_objects.signal_result import SignalResult
 
@@ -57,11 +58,16 @@ class SignalAnalyticsService:
         request: "SignalRequest | None",
         result: "SignalResult",
         features: dict,
+        option_play: "OptionPlay | None" = None,
     ) -> None:
         """Record one scanner result to signal_analytics. Never raises — fail-open."""
         try:
             execution_mode = await self._get_execution_mode()
-            await self._insert(symbol_name, exchange, is_index, sector, request, result, features, execution_mode)
+            await self._insert(
+                symbol_name, exchange, is_index, sector,
+                request, result, features, execution_mode,
+                option_play=option_play,
+            )
         except Exception as exc:
             _log.warning("signal_analytics.record_failed symbol=%s: %s", symbol_name, exc)
 
@@ -75,6 +81,7 @@ class SignalAnalyticsService:
         result: "SignalResult",
         features: dict,
         execution_mode: str = "MANUAL",
+        option_play: "OptionPlay | None" = None,
     ) -> None:
         bd = result.score_breakdown
         rejection = result.rejection_reason.value if result.rejection_reason else None
@@ -114,6 +121,19 @@ class SignalAnalyticsService:
 
             "was_accepted": result.accepted,
             "rejection_reason": rejection,
+
+            # Option contract fields
+            "option_type":   option_play.option_type   if option_play else None,
+            "option_strike": option_play.option_strike  if option_play else None,
+            "option_expiry": (
+                date.fromisoformat(option_play.option_expiry)
+                if option_play and isinstance(option_play.option_expiry, str)
+                else option_play.option_expiry if option_play else None
+            ),
+            "option_symbol": option_play.option_symbol  if option_play else None,
+            "option_entry":  option_play.entry          if option_play else None,
+            "option_sl":     option_play.sl             if option_play else None,
+            "option_target": option_play.target         if option_play else None,
         }
 
         async with self._sf() as db:
@@ -127,7 +147,9 @@ class SignalAnalyticsService:
                         trend_score, volume_score, vwap_score, oi_score,
                         sentiment_score, iv_score, option_chain_score,
                         adx_at_signal, volume_ratio_at_signal, rsi_at_signal,
-                        was_accepted, rejection_reason
+                        was_accepted, rejection_reason,
+                        option_type, option_strike, option_expiry, option_symbol,
+                        option_entry, option_sl, option_target
                     ) VALUES (
                         :signal_id, :ticker, :exchange, :direction, :strategy_type, :regime,
                         :sector, :is_index, :execution_mode,
@@ -136,7 +158,9 @@ class SignalAnalyticsService:
                         :trend_score, :volume_score, :vwap_score, :oi_score,
                         :sentiment_score, :iv_score, :option_chain_score,
                         :adx_at_signal, :volume_ratio_at_signal, :rsi_at_signal,
-                        :was_accepted, :rejection_reason
+                        :was_accepted, :rejection_reason,
+                        :option_type, :option_strike, :option_expiry, :option_symbol,
+                        :option_entry, :option_sl, :option_target
                     )
                 """),
                 params,

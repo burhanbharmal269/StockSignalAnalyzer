@@ -39,7 +39,7 @@ const columns: ColumnDef<Signal>[] = [
     header: "Confidence",
     cell: ({ row }) => {
       const c = row.original.confidence;
-      return c != null ? `${(c * 100).toFixed(0)}%` : "—";
+      return c != null ? `${c.toFixed(0)}%` : "—";
     },
   },
   {

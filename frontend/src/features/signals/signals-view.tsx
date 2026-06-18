@@ -8,12 +8,6 @@ import { toast } from "sonner";
 import type { Signal } from "@/types";
 import type { ColumnDef } from "@tanstack/react-table";
 
-const DIRECTION_COLOR: Record<string, string> = {
-  LONG: "text-profit",
-  SHORT: "text-loss",
-  NEUTRAL: "text-muted-foreground",
-};
-
 const STATE_COLOR: Record<string, string> = {
   RISK_PENDING: "text-warning",
   RISK_APPROVED: "text-profit",
@@ -24,8 +18,18 @@ const STATE_COLOR: Record<string, string> = {
   CANCELLED: "text-muted-foreground",
 };
 
-// Only RISK_PENDING signals can be manually approved/rejected (backend enforces this)
 const MANUAL_ACTION_STATES = new Set(["RISK_PENDING"]);
+
+function formatOptionChain(signal: Signal): string | null {
+  if (!signal.option_type || !signal.option_strike || !signal.option_expiry) return null;
+  const d = new Date(signal.option_expiry);
+  const day = d.getUTCDate();
+  const month = d.toLocaleString("en-IN", { month: "short", timeZone: "UTC" });
+  const strike = Number.isInteger(signal.option_strike)
+    ? signal.option_strike
+    : signal.option_strike.toFixed(0);
+  return `${day} ${month} ${strike} ${signal.option_type}`;
+}
 
 export function SignalsView() {
   useSignalLiveUpdates();
@@ -36,81 +40,79 @@ export function SignalsView() {
   const columns: ColumnDef<Signal>[] = [
     {
       accessorKey: "symbol",
-      header: "Symbol",
+      header: "Stock",
       cell: ({ row }) => (
-        <span className="font-mono font-medium">{row.original.symbol}</span>
+        <span className="font-mono font-semibold">{row.original.symbol}</span>
       ),
     },
     {
-      accessorKey: "signal_type",
-      header: "Direction",
-      cell: ({ row }) => (
-        <span className={cn("font-semibold", DIRECTION_COLOR[row.original.signal_type] ?? "")}>
-          {row.original.signal_type}
-        </span>
-      ),
-    },
-    {
-      accessorKey: "adjusted_score",
-      header: "Score",
+      id: "option_chain",
+      header: "Contract",
       cell: ({ row }) => {
-        const s = row.original.adjusted_score;
-        return <span className="tabular-nums">{s != null ? s.toFixed(1) : "—"}</span>;
+        const label = formatOptionChain(row.original);
+        const type = row.original.option_type;
+        if (!label) return <span className="text-muted-foreground text-xs">—</span>;
+        return (
+          <span className={cn("font-mono text-xs font-bold", type === "CE" ? "text-profit" : "text-loss")}>
+            {label}
+          </span>
+        );
       },
     },
     {
-      accessorKey: "confidence",
-      header: "Confidence",
-      cell: ({ row }) => {
-        const c = row.original.confidence;
-        // Backend sends confidence as 0-100 (not 0-1)
-        return <span className="tabular-nums">{c != null ? `${c.toFixed(0)}%` : "—"}</span>;
-      },
-    },
-    {
-      accessorKey: "entry_price",
+      id: "option_entry",
       header: "Entry",
       cell: ({ row }) => {
-        const v = row.original.entry_price;
-        return <span className="tabular-nums">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
+        const v = row.original.option_entry;
+        return <span className="tabular-nums text-sm font-medium">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
       },
     },
     {
-      accessorKey: "stop_loss_price",
-      header: "SL",
-      cell: ({ row }) => {
-        const v = row.original.stop_loss_price;
-        return <span className="tabular-nums text-loss">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
-      },
-    },
-    {
-      accessorKey: "target_price",
+      id: "option_target",
       header: "Target",
       cell: ({ row }) => {
-        const v = row.original.target_price;
-        return <span className="tabular-nums text-profit">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
+        const v = row.original.option_target;
+        return <span className="tabular-nums text-sm font-medium text-profit">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
+      },
+    },
+    {
+      id: "option_sl",
+      header: "Stop Loss",
+      cell: ({ row }) => {
+        const v = row.original.option_sl;
+        return <span className="tabular-nums text-sm font-medium text-loss">{v != null ? `₹${v.toFixed(2)}` : "—"}</span>;
       },
     },
     {
       accessorKey: "strategy_type",
       header: "Strategy",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.strategy_type}</span>
+      ),
     },
     {
       accessorKey: "regime",
       header: "Regime",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">{row.original.regime}</span>
+      ),
     },
     {
       accessorKey: "state",
       header: "Status",
       cell: ({ row }) => {
         const s = row.original.state;
-        return <span className={STATE_COLOR[s] ?? ""}>{s}</span>;
+        return <span className={cn("text-xs font-medium", STATE_COLOR[s] ?? "")}>{s}</span>;
       },
     },
     {
       accessorKey: "created_at",
       header: "Age",
-      cell: ({ row }) => formatRelativeTime(row.original.created_at),
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground whitespace-nowrap">
+          {formatRelativeTime(row.original.created_at)}
+        </span>
+      ),
     },
     {
       id: "actions",

@@ -41,7 +41,7 @@ class SignalAnalyticsOrm(Base):
     # Identity
     ticker: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     exchange: Mapped[str] = mapped_column(String(10), nullable=False)
-    direction: Mapped[str] = mapped_column(String(5), nullable=False, index=True)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     strategy_type: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
     regime: Mapped[str] = mapped_column(String(30), nullable=False)
     sector: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)

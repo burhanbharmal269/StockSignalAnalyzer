@@ -51,6 +51,13 @@ def _to_response(signal: object) -> SignalResponse:
         entry_price=signal.entry_price,
         stop_loss_price=signal.stop_loss_price,
         target_price=signal.target_price,
+        option_type=signal.option_type,
+        option_strike=signal.option_strike,
+        option_expiry=signal.option_expiry,
+        option_symbol=signal.option_symbol,
+        option_entry=signal.option_entry,
+        option_sl=signal.option_sl,
+        option_target=signal.option_target,
     )
 
 

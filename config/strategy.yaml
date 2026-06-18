@@ -100,7 +100,7 @@ weights:
 gates:
   min_score_to_execute: 70
   min_confidence_to_execute: 65
-  data_completeness_min_pct: 75.0   # requires 6 of 7 components — OI and IV now derived from candles
+  data_completeness_min_pct: 60.0   # 5 of 7 components sufficient — OI_BUILDUP and OPTION_CHAIN unavailable without live market data
   direction_conviction_min: 0.50    # raised from 0.45: research win rates (65-70%) demand clear conviction
 
 # ---------------------------------------------------------------------------

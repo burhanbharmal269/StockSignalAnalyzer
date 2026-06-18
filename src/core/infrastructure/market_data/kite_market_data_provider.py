@@ -48,6 +48,16 @@ _INDEX_KEY_MAP: dict[str, str] = {
     "INDIA VIX":  "NSE:INDIA VIX",   # Kite key for India VIX index
 }
 
+# Kite stores index tradingsymbols with full names — map our abbreviation to Kite's name
+# so _resolve_token() can find the right instrument in kite.instruments("NSE").
+_INDEX_TRADINGSYMBOL_MAP: dict[str, str] = {
+    "NIFTY":      "NIFTY 50",
+    "BANKNIFTY":  "NIFTY BANK",
+    "FINNIFTY":   "NIFTY FIN SERVICE",
+    "MIDCPNIFTY": "NIFTY MID SELECT",
+    "INDIA VIX":  "INDIA VIX",
+}
+
 
 def _to_nse_key(symbol: str) -> str:
     """Convert an underlying symbol name to its Kite exchange:tradingsymbol key."""
@@ -286,12 +296,15 @@ class KiteMarketDataProvider(IMarketDataProvider):
             return self._token_map[symbol]
         loop = asyncio.get_event_loop()
         kite = self._get_kite()
+        # Indices are stored in Kite with their full official name (e.g. "NIFTY 50"),
+        # not the abbreviation used in our universe (e.g. "NIFTY").
+        search_ts = _INDEX_TRADINGSYMBOL_MAP.get(symbol, symbol)
         try:
             instruments: list[dict] = await loop.run_in_executor(
                 None, lambda: kite.instruments("NSE")
             )
             for inst in instruments:
-                if inst["tradingsymbol"] == symbol:
+                if inst["tradingsymbol"] == search_ts:
                     token = int(inst["instrument_token"])
                     self._token_map[symbol] = token
                     return token

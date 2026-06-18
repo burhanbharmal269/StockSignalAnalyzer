@@ -74,6 +74,7 @@ margin:
   utilization_limit_pct: 80       # alert at 80% margin utilization (MarginAlertBreached event)
   min_free_margin_pct: 20         # block new positions if free margin < 20%
   timeout_ms: 150                 # broker margin API timeout in milliseconds (D-9)
+  fallback_margin_per_lot_inr: 50000  # used when MarginCachePoller has not yet populated cache
 
 risk_reward:
   min_ratio: 1.5                  # renamed from minimum_ratio; minimum R:R to accept a signal
@@ -90,7 +91,7 @@ position_sizing:
                                   # effective fallback = 0.05 × 0.25 = 1.25% Kelly — very conservative
 
 db:
-  risk_decisions_insert_timeout_ms: 100   # INSERT timeout for persistence-first invariant
+  risk_decisions_insert_timeout_ms: 500   # INSERT timeout for persistence-first invariant
 
 redis_fail_safe:
   # Documents the fail-safe policy per Redis data source (C-2 resolution).

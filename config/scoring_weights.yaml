@@ -74,7 +74,7 @@ data_freshness:
 
 # Data quality gates
 data_quality:
-  data_completeness_min_pct: 75       # 6 of 7 components must have data (OI from candles, IV from BB proxy)
+  data_completeness_min_pct: 60       # 5 of 7 components sufficient — OI_BUILDUP and OPTION_CHAIN unavailable without live market data
   score_quality_high_min_conviction: 0.60
   score_quality_medium_min_conviction: 0.50
   score_quality_high_min_completeness_pct: 100.0

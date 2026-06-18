@@ -111,6 +111,7 @@ class MarginConfig(BaseModel):
     utilization_limit_pct: float = Field(ge=0.0, le=100.0)
     min_free_margin_pct: float = Field(ge=0.0, le=100.0)
     timeout_ms: int = Field(ge=1)
+    fallback_margin_per_lot_inr: float = Field(default=50000.0, ge=0.0)
 
     @property
     def timeout_seconds(self) -> float:

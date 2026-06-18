@@ -19,16 +19,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     POETRY_VIRTUALENVS_IN_PROJECT=true \
     POETRY_NO_INTERACTION=1
 
-# Install Poetry
+# Install Poetry — pip puts the binary in /usr/local/bin (in PATH)
 RUN pip install "poetry==$POETRY_VERSION"
 
 WORKDIR /app
 
 # Copy dependency manifests first (cache layer)
-COPY pyproject.toml ./
+COPY pyproject.toml poetry.lock ./
 
 # Install runtime dependencies only (no dev tools in production image)
-RUN /opt/poetry/bin/poetry install --only main --no-root
+RUN poetry install --only main --no-root
 
 # -----------------------------------------------------------
 # Stage 2: runtime — lean production image
@@ -52,6 +52,9 @@ COPY --from=builder /app/.venv .venv
 # Copy application source
 COPY src/ ./src/
 COPY config/ ./config/
+COPY alembic/ ./alembic/
+COPY alembic.ini ./alembic.ini
+COPY entrypoint.sh ./entrypoint.sh
 
 # Ownership — appuser owns everything
 RUN chown -R appuser:appgroup /app
@@ -63,4 +66,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"
 
-CMD ["python", "src/main.py"]
+CMD ["sh", "entrypoint.sh"]
