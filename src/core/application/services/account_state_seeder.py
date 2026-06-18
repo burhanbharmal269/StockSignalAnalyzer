@@ -46,23 +46,42 @@ class AccountStateSeeder:
         return seeded
 
     async def _seed_account_state(self) -> bool:
-        """Seed risk:account_state if absent. Returns True if seeded."""
+        """Seed risk:account_state, always syncing capital from risk.yaml.
+
+        Capital fields (account_capital, session_capital) are always written from
+        risk.yaml so that changing total_capital takes effect on next restart.
+        P&L and utilisation fields are only written when the key is entirely absent
+        (fresh session) — live intraday state is preserved across restarts.
+        """
         try:
             existing = await self._redis.hgetall(_ACCT_KEY)
         except Exception as exc:
             _log.error("account_state_seeder.redis_error: %s", exc)
             return False
 
-        if existing:
-            _log.info(
-                "account_state_seeder.account_already_present trading_mode=%s",
-                existing.get("trading_mode", "?"),
-            )
-            return False
-
         capital  = str(self._config.capital.total_capital)
         now_iso  = datetime.now(UTC).isoformat()
 
+        if existing:
+            # Key exists — only update capital fields from risk.yaml.
+            # Preserve live P&L / margin utilisation to survive restarts.
+            try:
+                await self._redis.hset(_ACCT_KEY, mapping={
+                    "account_capital": capital,
+                    "session_capital": capital,
+                    "captured_at": now_iso,
+                })
+                await self._redis.expire(_ACCT_KEY, _TTL_SECONDS)
+            except Exception as exc:
+                _log.error("account_state_seeder.account_update_error: %s", exc)
+                return False
+            _log.info(
+                "account_state_seeder.capital_synced capital=%s trading_mode=%s",
+                capital, existing.get("trading_mode", "?"),
+            )
+            return True
+
+        # Fresh key — write all fields with safe paper-trading defaults.
         state: dict[str, str] = {
             "account_capital": capital,
             "session_capital": capital,

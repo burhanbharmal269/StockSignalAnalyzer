@@ -193,9 +193,8 @@ def create_app() -> FastAPI:
         # from the first scan cycle (before any AccountStatePoller writes live data).
         account_state_seeder = container.account_state_seeder()
         try:
-            seeded = await account_state_seeder.seed_if_missing()
-            if seeded:
-                logger.info("account_state.seeded")
+            await account_state_seeder.seed_if_missing()
+            logger.info("account_state.synced")
         except Exception:
             logger.warning("account_state.seed_failed — Risk Engine may reject signals")
 
