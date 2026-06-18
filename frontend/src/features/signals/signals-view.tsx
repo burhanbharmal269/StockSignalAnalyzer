@@ -34,8 +34,13 @@ function formatOptionChain(signal: Signal): string | null {
 export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
+  const [foOnly, setFoOnly] = useState(true);
   const { data, isLoading } = useSignals(stateFilter ? { state: stateFilter } : {});
   const { approve, reject } = useSignalMutations();
+
+  const signals = foOnly
+    ? (data?.signals ?? []).filter((s) => s.option_type != null)
+    : (data?.signals ?? []);
 
   const columns: ColumnDef<Signal>[] = [
     {
@@ -149,13 +154,33 @@ export function SignalsView() {
     },
   ];
 
+  const withContractCount = (data?.signals ?? []).filter((s) => s.option_type != null).length;
+  const totalCount = data?.signals?.length ?? 0;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">
-          {data?.total ?? 0} signals
+          {foOnly ? withContractCount : totalCount} signals
+          {foOnly && totalCount > withContractCount && (
+            <span className="ml-2 text-xs text-muted-foreground/60">
+              ({totalCount - withContractCount} without contract hidden)
+            </span>
+          )}
         </h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setFoOnly((v) => !v)}
+            className={cn(
+              "text-xs px-3 py-1 rounded border font-medium",
+              foOnly
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border hover:bg-muted text-muted-foreground"
+            )}
+          >
+            {foOnly ? "F&O Only" : "All Signals"}
+          </button>
+          <div className="w-px bg-border" />
           {(["RISK_PENDING", "RISK_APPROVED", "RISK_REJECTED", "EXECUTED"] as const).map((s) => (
             <button
               key={s}
@@ -177,8 +202,8 @@ export function SignalsView() {
       ) : (
         <DataTable
           columns={columns}
-          data={data?.signals ?? []}
-          emptyMessage="No signals"
+          data={signals}
+          emptyMessage={foOnly ? "No F&O signals with contracts yet" : "No signals"}
         />
       )}
     </div>

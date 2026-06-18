@@ -627,6 +627,17 @@ class SignalScannerService:
             except Exception as exc:
                 _log.debug("signal_scanner.option_play_failed symbol=%s: %s", symbol, exc)
 
+        # Gate: accepted signals with no option contract are not actionable — skip.
+        # Index futures (NIFTY, BANKNIFTY) always retry; equity with no NFO contract
+        # should not clutter the signals table.
+        if result.accepted and option_play is None:
+            _log.warning(
+                "signal_scanner.no_contract_skip symbol=%s direction=%s — "
+                "no option contract found; signal not saved",
+                symbol, result.direction,
+            )
+            return "no_contract"
+
         # ── TRACE 7: Signal analytics — always record (execution-mode independent) ──
         if self._analytics is not None:
             await self._analytics.record(
