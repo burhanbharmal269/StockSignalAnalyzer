@@ -92,6 +92,15 @@ class SignalAnalyticsOrm(Base):
     time_to_target_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     time_to_stop_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Option contract recommendation (from signal_analytics migration 20260618_1000)
+    option_type: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    option_strike: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    option_expiry: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    option_symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    option_entry: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    option_sl: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    option_target: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

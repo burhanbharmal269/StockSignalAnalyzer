@@ -150,8 +150,8 @@ export function SignalsView() {
       cell: ({ row }) => {
         const c = row.original.confidence;
         if (c == null) return <span className="text-muted-foreground text-xs">—</span>;
-        const pct = (c * 100).toFixed(0);
-        const color = c >= 0.65 ? "text-profit" : c >= 0.50 ? "text-warning" : "text-muted-foreground";
+        const pct = c.toFixed(0);
+        const color = c >= 65 ? "text-profit" : c >= 50 ? "text-warning" : "text-muted-foreground";
         return <span className={cn("tabular-nums text-xs font-medium", color)}>{pct}%</span>;
       },
     },
