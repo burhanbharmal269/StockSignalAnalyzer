@@ -851,6 +851,7 @@ class SignalScannerService:
                     # due to theta collapse — applying the same 75 threshold would reject every
                     # valid expiry-day trade. Threshold rises as DTE falls.
                     _iv_pct = chain_data.get("iv_percentile")
+                    _near_dte: int | None = None
                     if _iv_pct is not None:
                         _today = datetime.utcnow().date()
                         _dtes = []
