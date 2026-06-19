@@ -51,7 +51,17 @@ _REGIME_SCORE_BUMP: dict[str, float] = {
 
 # Stock liquidity gate: reject thin-volume stock F&O before any scoring.
 # Ratio vs own 20-bar avg volume — index futures (NIFTY/BNF) are exempt (deep liquidity).
-_STOCK_MIN_VOLUME_RATIO = 0.25
+# 0.60 = must be at least 60% of average volume. Below this, option spreads widen,
+# fills are poor, and the signal reflects historical not current momentum.
+_STOCK_MIN_VOLUME_RATIO = 0.60
+
+# ATR quality gate for option trades: underlying must have enough daily range.
+# Our ATR is the 14-period ATR on 15-minute candles (not daily).
+# A 15m ATR of 0.30% maps to ~1.5% daily range (0.30% × √26 candles/day ≈ 1.5%).
+# Below this the stock barely moves per session; theta/IV crush kills option premium
+# before any directional gain materialises. Also reject if ATR is in deep compression
+# (atr_ratio < 0.50 = current volatility less than half the stock's own recent average).
+_MIN_ATR_PCT_FOR_OPTIONS = 0.30
 
 
 def _ist_now() -> datetime:
@@ -572,7 +582,7 @@ class SignalScannerService:
         accepted = rejected = errors = gated = 0
         _GATE_OUTCOMES = frozenset({
             "opening_volatility", "closing_volatility", "vix_too_high",
-            "thin_volume", "rsi_extreme", "macd_against",
+            "thin_volume", "low_atr", "rsi_extreme", "macd_against",
             "regime_score_too_low", "iv_too_expensive", "expiry_day_gamma",
             "no_contract",
         })
@@ -684,8 +694,8 @@ class SignalScannerService:
 
         # ── Stock liquidity gate ──────────────────────────────────────
         # Index futures (NIFTY, BANKNIFTY, FINNIFTY) always have deep liquidity.
-        # Stock F&O with < 25% of their own 20-bar average volume are too thin
-        # for reliable entry/exit — spread risk and slippage destroy edge.
+        # Stock F&O below 60% of own 20-bar avg volume: option spreads widen,
+        # fills are poor, and the volume signal is unreliable.
         if not sym.is_index:
             _vol_ratio_chk = features.get("volume_ratio") or 1.0
             if _vol_ratio_chk < _STOCK_MIN_VOLUME_RATIO:
@@ -695,6 +705,24 @@ class SignalScannerService:
                     symbol, _vol_ratio_chk, _STOCK_MIN_VOLUME_RATIO,
                 )
                 return "thin_volume"
+
+        # ── ATR quality gate ─────────────────────────────────────────
+        # Two checks: (1) ATR% of price too low = stock barely moves;
+        # (2) atr_ratio too low = stock in deep compression vs own history.
+        # Either condition means theta/IV crush will kill option premium
+        # before any directional gain materialises.
+        if not sym.is_index:
+            _close_chk    = features.get("close") or 0.0
+            _atr_chk      = features.get("atr") or 0.0
+            _atr_ratio_chk = features.get("atr_ratio") or 1.0
+            _atr_pct      = (_atr_chk / _close_chk * 100) if _close_chk > 0 else 0.0
+            if _atr_pct < _MIN_ATR_PCT_FOR_OPTIONS or _atr_ratio_chk < 0.50:
+                _log.info(
+                    "signal_scanner.atr_gate symbol=%s atr=%.2f price=%.2f "
+                    "atr_pct=%.2f%% atr_ratio=%.2f — insufficient range for options",
+                    symbol, _atr_chk, _close_chk, _atr_pct, _atr_ratio_chk,
+                )
+                return "low_atr"
 
         # ── TRACE 4: Regime classification ────────────────────────────
         regime   = _classify_regime(features)
@@ -819,12 +847,16 @@ class SignalScannerService:
         # false signals are costly, we impose a stricter floor without touching
         # the engine — "base engine + regime overlay" pattern.
         if result.accepted:
-            # Use string value of regime enum for dict lookup (avoids circular import)
+            # Base floor of 70 applies to ALL regimes — not just bumped ones.
+            # Previously the check was `if _bump > 0`, which meant TRENDING_BULLISH/BEARISH
+            # signals only needed to clear the engine gate (40) not 70 — allowing weak
+            # 41-69 score signals through on the most common regime. Now 70 is universal
+            # and bumped regimes (HIGH_VOLATILITY, SIDEWAYS) require even higher.
             _regime_key = str(regime)
             _bump   = _REGIME_SCORE_BUMP.get(_regime_key, 0.0)
             _escore = result.adjusted_score or 0.0
             _emin   = 70.0 + _bump
-            if _bump > 0 and _escore < _emin:
+            if _escore < _emin:
                 _log.warning(
                     "signal_scanner.regime_overlay_reject symbol=%s regime=%s "
                     "score=%.1f required=%.1f bump=%.1f",

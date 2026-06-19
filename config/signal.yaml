@@ -4,25 +4,28 @@ signal:
   market_close_time: "15:15:00"
   dedup_ttl_minutes: 30
   gate:
-    min_score: 40       # 40/100 allows strong single-component signals (e.g. index trend ADX>40)
-    min_confidence: 35  # 35% confidence floor — realistic when OI/sentiment data absent for indices
+    min_score: 60       # raised from 40 — signals below 60 are too weak for option buying
+    min_confidence: 45  # raised from 35 — minimum quality bar; below 45% = random noise
 
   # Expiry window for option contract selection.
-  # Intraday mode: 0-3 DTE — same-day and next-day weekly expiries for NIFTY/BANKNIFTY;
-  # current-week for stocks. Falls back gracefully when window has no contracts.
+  # Intraday mode: prefer 2-8 DTE to avoid 0-DTE gamma risk (expiry day theta collapse).
+  # Falls back gracefully when window has no contracts.
   option_dte:
-    min: 0   # intraday: 0-DTE weekly options are the primary vehicle
-    max: 3   # prefer 0-3 DTE for maximum liquidity and leverage
+    min: 2   # avoid 0-1 DTE: gamma/theta risk too high for intraday option buying
+    max: 8   # weekly expiry for stocks; current-week for indices
 
   # Intraday risk parameters — stored in config, not hardcoded in code.
   # SL/target expressed as fraction of option premium.
-  # Grade A = high conviction (score >= grade_a_min_score); Grade B = lower conviction.
+  # Grade A = high conviction (score >= 70); Grade B = moderate conviction (60-70).
+  # Research consensus for NSE intraday option buying: minimum 2:1 R:R.
+  # Wider SL (25/20%) reduces false stop-outs on normal option noise;
+  # higher targets (55/42%) mean we only stay in trades with real momentum.
   intraday_risk:
-    grade_a_min_score: 65.0
-    grade_a_sl_pct: 0.20        # Grade A: 20% SL on option premium
-    grade_a_target_pct: 0.35    # Grade A: 35% target  → 1.75:1 R:R
-    grade_b_sl_pct: 0.15        # Grade B: 15% SL — tighter on lower conviction
-    grade_b_target_pct: 0.28    # Grade B: 28% target  → 1.87:1 R:R
+    grade_a_min_score: 70.0
+    grade_a_sl_pct: 0.25        # Grade A: 25% SL on option premium
+    grade_a_target_pct: 0.55    # Grade A: 55% target  → 2.2:1 R:R (was 1.75:1)
+    grade_b_sl_pct: 0.20        # Grade B: 20% SL — tighter on lower conviction
+    grade_b_target_pct: 0.42    # Grade B: 42% target  → 2.1:1 R:R (was 1.87:1)
     trailing_stop_enabled: true  # alert when price retraces 50% of gain
     breakeven_enabled: true      # move SL to entry when halfway to target
     position_timeout_minutes: 90 # auto-expire signal if not triggered within 90 min

@@ -45,8 +45,10 @@ _DEFAULT_TARGET_A     = 0.35
 _DEFAULT_SL_B         = 0.15
 _DEFAULT_TARGET_B     = 0.28
 
-_MIN_LTP              = 1.0    # ignore strikes with LTP below this (illiquid)
-_MIN_OI_FLOOR         = 100    # minimum OI to be considered a liquid contract
+_MIN_LTP              = 3.0    # ignore strikes with LTP below ₹3 (too cheap = noisy, bid-ask is huge % of premium)
+_MIN_LTP_PCT          = 0.004  # also reject if premium < 0.4% of underlying (same reason)
+_MAX_LTP_PCT          = 0.030  # reject if premium > 3% of underlying (overpaying for IV)
+_MIN_OI_FLOOR         = 300    # minimum OI for liquid contract (raised from 100)
 _MAX_STRIKE_SPREAD    = 2      # evaluate ATM ± this many strikes for ranking
 
 
@@ -87,10 +89,15 @@ class OptionStrikeSelector:
             return None
 
         opt_type = "CE" if direction == "LONG" else "PE"
+        # Premium quality filter: reject options that are too cheap (noisy, wide spread)
+        # or too expensive (overpaying for IV). Both checks protect option buyers.
+        _min_premium = max(_MIN_LTP, underlying_price * _MIN_LTP_PCT)
+        _max_premium = underlying_price * _MAX_LTP_PCT if underlying_price > 0 else float("inf")
         side_entries = [
             e for e in chain_entries
             if str(e.get("option_type", "")).upper() == opt_type
-            and float(e.get("ltp") or 0) >= _MIN_LTP
+            and float(e.get("ltp") or 0) >= _min_premium
+            and float(e.get("ltp") or 0) <= _max_premium
             and int(e.get("oi") or 0) > 0
         ]
         if not side_entries:
