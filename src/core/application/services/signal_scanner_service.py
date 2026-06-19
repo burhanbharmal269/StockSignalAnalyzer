@@ -639,12 +639,14 @@ class SignalScannerService:
         # ── Time-of-day hard gates (before any I/O) ───────────────────
         # Opening volatility (9:15-9:30 IST): first 15 min = price discovery chaos,
         # IV is dislocated, option spreads wide — no new entries.
-        # Closing volatility (≥15:00 IST): last 20 min before market-close exit fires
-        # at 15:20; a signal with 5-20 min to live has no meaningful hold window.
+        # Closing volatility (≥14:30 IST): a 55% option premium target needs ~2 hours
+        # for the underlying to make a 1.5-2% move; signals after 14:30 have < 1 hour
+        # and cannot realistically reach target before the 15:20 forced-exit.
+        # Raised from 15:00 → 14:30 to ensure all published signals have viable time window.
         _now_ist = _ist_now().time()
         if _dtime(9, 15) <= _now_ist < _dtime(9, 30):
             return "opening_volatility"
-        if _now_ist >= _dtime(15, 0):
+        if _now_ist >= _dtime(14, 30):
             return "closing_volatility"
 
         # ── India VIX hard gate ────────────────────────────────────────

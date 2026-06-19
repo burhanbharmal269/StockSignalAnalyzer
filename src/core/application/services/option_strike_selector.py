@@ -21,8 +21,9 @@ Produces an OptionPlay with:
   - target: entry × (1 + target_pct)
 
 SL / target sizing:
-  Grade A (adjusted_score >= grade_a_min_score): sl=20%, target=35%
-  Grade B (adjusted_score < grade_a_min_score or unknown): sl=15%, target=28%
+  Grade A (adjusted_score >= grade_a_min_score): sl=25%, target=55%  (2.2:1 R:R)
+  Grade B (adjusted_score < grade_a_min_score or unknown): sl=20%, target=42%  (2.1:1 R:R)
+  After 13:30 IST: target capped at 35% regardless of grade (time constraint).
   Thresholds are read from intraday_risk config — not hardcoded.
 """
 
@@ -30,8 +31,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time as _dtime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from core.infrastructure.config.signal_config import IntradayRiskConfig
@@ -45,11 +47,14 @@ _DEFAULT_TARGET_A     = 0.35
 _DEFAULT_SL_B         = 0.15
 _DEFAULT_TARGET_B     = 0.28
 
-_MIN_LTP              = 3.0    # ignore strikes with LTP below ₹3 (too cheap = noisy, bid-ask is huge % of premium)
+_MIN_LTP              = 8.0    # ignore strikes below ₹8: on cheaper options, 25% SL = ₹2 buffer which bid-ask noise alone can trigger
 _MIN_LTP_PCT          = 0.004  # also reject if premium < 0.4% of underlying (same reason)
 _MAX_LTP_PCT          = 0.030  # reject if premium > 3% of underlying (overpaying for IV)
 _MIN_OI_FLOOR         = 300    # minimum OI for liquid contract (raised from 100)
 _MAX_STRIKE_SPREAD    = 2      # evaluate ATM ± this many strikes for ranking
+_MIN_SL_BUFFER        = 2.0    # minimum absolute ₹ gap between entry and SL; tighter = random noise stops us out
+_LATE_SESSION_START   = _dtime(13, 30)   # after this, reduce target to 35% — < 2 hours to close
+_LATE_TARGET_CAP      = 0.35             # cap on target_pct after 13:30 IST
 
 
 @dataclass(frozen=True)
@@ -128,6 +133,25 @@ class OptionStrikeSelector:
         # Grade A/B sizing from config (Phase 5)
         sl_pct, target_pct = self._grade_sizing(adjusted_score, intraday_risk_cfg)
         sl     = round(entry * (1 - sl_pct), 2)
+
+        # Reject contracts where SL absolute buffer is < ₹2: the bid-ask spread
+        # on a ₹4 option can be ₹0.25-0.50; a 25% SL = only ₹1 below entry
+        # — market makers will trigger it without any real adverse move.
+        if (entry - sl) < _MIN_SL_BUFFER:
+            _log.debug(
+                "option_selector.sl_too_tight symbol=%s entry=%.2f sl=%.2f buffer=%.2f min=%.2f",
+                strike_entry.get("underlying", "?"), entry, sl, entry - sl, _MIN_SL_BUFFER,
+            )
+            return None
+
+        # Time-based target reduction: signals after 13:30 IST have < 2 hours to
+        # market close. A 55% option target needs ~1.5-2% underlying move — not
+        # achievable in under 2 hours for most stocks. Cap at 35% so published
+        # targets remain realistic and signal outcome stats stay meaningful.
+        _now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).time()
+        if _now_ist >= _LATE_SESSION_START and target_pct > _LATE_TARGET_CAP:
+            target_pct = _LATE_TARGET_CAP
+
         target = round(entry * (1 + target_pct), 2)
 
         return OptionPlay(

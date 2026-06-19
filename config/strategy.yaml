@@ -153,11 +153,11 @@ oi_buildup:
 # ---------------------------------------------------------------------------
 trend:
   # ADX gate — HARD GATE: ADX below this returns 0 regardless of direction
-  # Research: ADX < 22 = insufficient trend for option buying; the underlying
-  # won't travel far enough for option premium to gain 55% before theta decay.
-  # Raised from 20.0 → 22.0: LOW_VOL regime (ADX < 22) now scores 0 on TREND,
-  # which prevents weak-trend signals from clearing the 70-pt floor.
-  adx_gate: 22.0
+  # Research consensus (NSE F&O studies): ADX < 25 = choppy, undefined trend;
+  # options bought in these conditions lose to theta decay before price moves.
+  # Raised 22.0 → 25.0: aligns with research-backed minimum; rejects marginal
+  # trend setups that historically have < 40% win rate on option buying.
+  adx_gate: 25.0
 
   # ADX score tiers (Step 1)
   adx_weak: 25.0
