@@ -444,3 +444,30 @@ risk_manager:
   # Maximum exposure to a single underlying as % of account capital.
   # Requires account_capital to be configured below when live trading is enabled.
   max_underlying_exposure_pct: 20.0
+
+# ---------------------------------------------------------------------------
+# Phase 18 — Dynamic Risk Budget (Section I)
+# Score + regime based position sizing. Replaces fixed 1-lot sizing.
+# ---------------------------------------------------------------------------
+dynamic_risk_budget:
+  enabled: true
+
+  # Phase 18H: force 1 lot until 100+ live trades + PF>1.30 + WR>45%
+  small_capital_mode: true
+
+  # Account capital in INR. Update when capital changes.
+  account_capital_inr: 200000   # ₹2 lakh initial deployment
+
+  # Risk % of account capital per trade per score tier
+  score_85_plus_risk_pct:  0.30
+  score_75_84_risk_pct:    0.20
+  score_70_74_risk_pct:    0.10
+
+  # Daily portfolio risk cap (sum of all signal risk in a day)
+  daily_max_risk_pct: 1.0
+
+  # Regime risk multipliers
+  regime_high_volatility_mult: 0.50
+  regime_sideways_mult:        0.75
+  regime_low_volatility_mult:  1.00
+  regime_trending_mult:        1.00
