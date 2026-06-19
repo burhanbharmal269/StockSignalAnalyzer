@@ -89,9 +89,14 @@ class TrendComponent(IScoreComponent):
         # Step 4: Supertrend
         long_st, short_st = self._supertrend_scores(features.supertrend_direction, cfg)
 
-        # Step 5: MTF (approximated — single TF data contributes 1-TF alignment)
-        # Full MTF bonus requires data from multiple timeframes (Phase 14+)
-        mtf_score = 0.0  # Conservative: no bonus without cross-TF data
+        # Step 5: Multi-timeframe confirmation overlay (Phase 14).
+        # Reads MtfSnapshot from FeatureSnapshot.mtf_5m (5-minute candles).
+        # Returns 0.0 when 5m data is unavailable — fail-open, never blocks signals.
+        mtf_score, _mtf_meta = self._mtf_overlay(
+            long_is_dominant=long_is_dominant,
+            mtf_5m=features.mtf_5m,
+            regime=context.regime,
+        )
 
         # Step 6: RSI momentum gate — gradated sweet-spot scoring
         long_rsi, short_rsi = self._rsi_gate(context.rsi_14, cfg)
@@ -156,6 +161,10 @@ class TrendComponent(IScoreComponent):
                 "prime_bonus": prime,
                 "adx_rising_bonus": adx_bonus,
                 "adx_rising": features.adx_rising,
+                # Phase 14 MTF attribution — used by SignalIntelligence outcome analysis
+                "mtf_alignment": _mtf_meta.get("alignment"),
+                "mtf_5m_bias": _mtf_meta.get("bias_5m"),
+                "mtf_score_bonus": _mtf_meta.get("score_bonus"),
             },
         )
 
@@ -274,6 +283,67 @@ class TrendComponent(IScoreComponent):
         if adx_rising and adx is not None and adx >= cfg.adx_rising_min:
             return cfg.adx_rising_bonus
         return 0.0
+
+    @staticmethod
+    def _mtf_overlay(
+        long_is_dominant: bool,
+        mtf_5m: object | None,
+        regime: object,
+    ) -> tuple[float, dict]:
+        """Phase 14 MTF overlay — returns (score_bonus, metadata_dict).
+
+        Compares 5m candle bias (from MtfSnapshot) against the 15m primary
+        direction (DI+ vs DI-). Score bonus is capped at [-4, +4] and is
+        further reduced in SIDEWAYS regime (×0.5) or zeroed in HIGH_VOLATILITY
+        (confidence-only adjustment handled by ConfidenceEngineService).
+
+        Returns 0.0 score and empty metadata when no 5m data is available
+        so that the overlay is strictly additive and never blocks signals.
+        """
+        from core.domain.enums.market_regime import MarketRegime
+
+        _NO_MTF = {"alignment": "NONE", "bias_5m": "NEUTRAL", "score_bonus": 0.0}
+
+        if mtf_5m is None:
+            return 0.0, _NO_MTF
+
+        bias_5m: str = mtf_5m.bias()
+
+        if long_is_dominant:
+            aligned  = (bias_5m == "BULLISH")
+            conflict = (bias_5m == "BEARISH")
+        else:
+            aligned  = (bias_5m == "BEARISH")
+            conflict = (bias_5m == "BULLISH")
+
+        alignment = "ALIGNED" if aligned else ("CONFLICT" if conflict else "NEUTRAL")
+
+        # Raw score bonus (before regime scaling)
+        if aligned:
+            # +4 when 5m ADX is also rising — trend is accelerating on both TFs
+            raw = 4.0 if getattr(mtf_5m, "adx_rising", False) else 2.0
+        elif conflict:
+            raw = -3.0
+        else:
+            raw = 0.0
+
+        # Regime-aware scaling
+        if regime in (MarketRegime.TRENDING_BULLISH, MarketRegime.TRENDING_BEARISH):
+            multiplier = 1.0
+        elif regime == MarketRegime.SIDEWAYS:
+            multiplier = 0.5   # reduce effect — mean-reversion context is noisier
+        elif regime == MarketRegime.HIGH_VOLATILITY:
+            multiplier = 0.0   # score is clean; confidence engine handles the adj
+        else:                  # LOW_VOLATILITY — full bonus valid
+            multiplier = 1.0
+
+        score_bonus = max(-4.0, min(4.0, raw * multiplier))
+
+        return score_bonus, {
+            "alignment":    alignment,
+            "bias_5m":      bias_5m,
+            "score_bonus":  score_bonus,
+        }
 
 
 def _ema_status_text(features: object) -> str:

@@ -74,6 +74,14 @@ class SignalAnalyticsOrm(Base):
     volume_ratio_at_signal: Mapped[float | None] = mapped_column(Numeric(6, 3), nullable=True)
     rsi_at_signal: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
 
+    # Phase 14 — MTF attribution (allows post-hoc aligned vs conflicted trade analysis)
+    # mtf_alignment: 5m candle bias at signal time ("BULLISH", "BEARISH", "NEUTRAL")
+    # mtf_score_bonus: raw bonus applied by TrendComponent (-4 to +4, pre-regime scaling)
+    # mtf_confidence_bonus: confidence adjustment applied to momentum_adj (-5 to +5)
+    mtf_alignment: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    mtf_score_bonus: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
+    mtf_confidence_bonus: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
+
     # Rejection tracking (for filter analytics)
     was_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     rejection_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)

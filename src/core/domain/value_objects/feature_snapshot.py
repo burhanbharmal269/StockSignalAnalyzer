@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.domain.value_objects.mtf_snapshot import MtfSnapshot
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,11 @@ class FeatureSnapshot:
 
     # Historical vs Implied Volatility
     hv_iv_ratio: float | None = None
+
+    # Phase 14 — 5-minute MTF snapshot for TrendComponent overlay.
+    # None when 5m candle data is unavailable or insufficient (< 55 bars).
+    # TrendComponent reads this to apply the ±4 pt alignment bonus/penalty.
+    mtf_5m: MtfSnapshot | None = None
 
     snapshot_time: datetime = field(
         default_factory=lambda: datetime.now(UTC)

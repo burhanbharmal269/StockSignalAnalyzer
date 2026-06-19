@@ -40,6 +40,48 @@ _log = logging.getLogger(__name__)
 _CALIBRATION_KEY_PREFIX = "confidence:calibration"
 
 
+def _mtf_confidence_adj(context: "ScoreContext") -> float:
+    """Compute MTF confidence adjustment from 5m MtfSnapshot.
+
+    Slot: momentum_adj (previously stubbed at 0).
+
+    Alignment between 15m and 5m trends → +5 confidence.
+    Conflict (5m opposes 15m) → -5 confidence.
+    No 5m data or neutral → 0.
+
+    Regime scaling matches TrendComponent:
+      HIGH_VOLATILITY: full confidence effect (score already zeroed by TrendComponent)
+      SIDEWAYS:        halved (×0.5)
+      TRENDING / LOW:  full (×1.0)
+    """
+    from core.domain.enums.market_regime import MarketRegime
+
+    mtf_5m = context.features.mtf_5m
+    if mtf_5m is None:
+        return 0.0
+
+    di_plus_15  = context.features.di_plus  or 0.0
+    di_minus_15 = context.features.di_minus or 0.0
+    long_15m    = di_plus_15 > di_minus_15
+
+    bias_5m = mtf_5m.bias()
+    aligned  = (long_15m and bias_5m == "BULLISH") or (not long_15m and bias_5m == "BEARISH")
+    conflict = (long_15m and bias_5m == "BEARISH") or (not long_15m and bias_5m == "BULLISH")
+
+    if aligned:
+        raw = 5.0
+    elif conflict:
+        raw = -5.0
+    else:
+        return 0.0
+
+    regime = context.regime
+    if regime == MarketRegime.SIDEWAYS:
+        raw *= 0.5
+
+    return max(-5.0, min(5.0, raw))
+
+
 class ConfidenceEngineService(IConfidenceEngine):
     """Orchestrates async data fetching, delegates computation, publishes events."""
 
@@ -122,6 +164,22 @@ class ConfidenceEngineService(IConfidenceEngine):
             recent_outcomes_short=recent_short,
             recent_outcomes_long=recent_long,
         )
+
+        # Phase 14 MTF confidence adjustment — slots into momentum_adj (previously 0).
+        # Applied BEFORE calibration so the bucket selection reflects MTF quality.
+        _mtf_adj = _mtf_confidence_adj(context)
+        if _mtf_adj != 0.0:
+            _new_raw = max(0.0, min(100.0, prelim.raw_confidence + _mtf_adj))
+            prelim = dataclasses.replace(
+                prelim,
+                momentum_adj=_mtf_adj,
+                raw_confidence=_new_raw,
+                confidence_components={**prelim.confidence_components, "momentum_adj": _mtf_adj},
+            )
+            _log.debug(
+                "confidence.mtf_adj instrument=%d adj=%.1f new_raw=%.2f",
+                context.instrument_token, _mtf_adj, _new_raw,
+            )
 
         # Apply Redis calibration factor (fail-open: defaults to 1.0)
         calibration_factor = await self._calibration_factor(prelim.raw_confidence)

@@ -119,6 +119,11 @@ class SignalAnalyticsService:
             "volume_ratio_at_signal": features.get("volume_ratio"),
             "rsi_at_signal": features.get("rsi_14"),
 
+            # Phase 14 MTF attribution fields
+            "mtf_alignment":         features.get("mtf_alignment"),
+            "mtf_score_bonus":       features.get("mtf_score_bonus"),
+            "mtf_confidence_bonus":  features.get("mtf_confidence_bonus"),
+
             "was_accepted": result.accepted,
             "rejection_reason": rejection,
 
@@ -147,6 +152,7 @@ class SignalAnalyticsService:
                         trend_score, volume_score, vwap_score, oi_score,
                         sentiment_score, iv_score, option_chain_score,
                         adx_at_signal, volume_ratio_at_signal, rsi_at_signal,
+                        mtf_alignment, mtf_score_bonus, mtf_confidence_bonus,
                         was_accepted, rejection_reason,
                         option_type, option_strike, option_expiry, option_symbol,
                         option_entry, option_sl, option_target
@@ -158,6 +164,7 @@ class SignalAnalyticsService:
                         :trend_score, :volume_score, :vwap_score, :oi_score,
                         :sentiment_score, :iv_score, :option_chain_score,
                         :adx_at_signal, :volume_ratio_at_signal, :rsi_at_signal,
+                        :mtf_alignment, :mtf_score_bonus, :mtf_confidence_bonus,
                         :was_accepted, :rejection_reason,
                         :option_type, :option_strike, :option_expiry, :option_symbol,
                         :option_entry, :option_sl, :option_target

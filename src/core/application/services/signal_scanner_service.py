@@ -313,6 +313,88 @@ def _compute_features(candles) -> dict:
         return {}
 
 
+def _compute_5m_features(candles) -> "MtfSnapshot | None":
+    """Compute lightweight 5-minute indicator snapshot for MTF overlay.
+
+    Requires ≥55 candles for EMA50 validity. Returns None on any error so
+    5m unavailability never blocks signal generation (fail-open design).
+    Indicators computed: EMA20, EMA50, ADX, DI+/DI-, ADX rising,
+    session VWAP, volume ratio, last candle direction.
+    """
+    from core.domain.value_objects.mtf_snapshot import MtfSnapshot
+
+    if len(candles) < 55:
+        return None
+    try:
+        import pandas as pd
+        import ta
+
+        closes = [float(c.close)  for c in candles]
+        highs  = [float(c.high)   for c in candles]
+        lows   = [float(c.low)    for c in candles]
+        vols   = [float(c.volume) for c in candles]
+        df = pd.DataFrame({"close": closes, "high": highs, "low": lows, "volume": vols})
+
+        # ADX / DI
+        adx_ind   = ta.trend.ADXIndicator(df["high"], df["low"], df["close"], window=14)
+        adx       = float(adx_ind.adx().iloc[-1])
+        di_plus   = float(adx_ind.adx_pos().iloc[-1])
+        di_minus  = float(adx_ind.adx_neg().iloc[-1])
+        adx_ser   = adx_ind.adx().dropna()
+        adx_rising = bool(
+            len(adx_ser) >= 3 and float(adx_ser.iloc[-1]) > float(adx_ser.iloc[-3])
+        )
+
+        # EMAs
+        ema_20 = float(ta.trend.EMAIndicator(df["close"], window=20).ema_indicator().iloc[-1])
+        ema_50 = (
+            float(ta.trend.EMAIndicator(df["close"], window=50).ema_indicator().iloc[-1])
+            if len(df) >= 50 else None
+        )
+
+        # Session-only VWAP (resets at 09:15 IST — same logic as 15m VWAP)
+        _today_ist = _ist_now().date()
+        _sess_idx = 0
+        for _i, _c in enumerate(candles):
+            _ts = getattr(_c, "date", None) or getattr(_c, "timestamp", None)
+            if _ts is not None:
+                try:
+                    _cd = _ts.date() if hasattr(_ts, "date") else _ts
+                    if _cd >= _today_ist:
+                        _sess_idx = _i
+                        break
+                except Exception:
+                    pass
+        df_s = df.iloc[_sess_idx:] if _sess_idx > 0 else df
+        _tp  = (df_s["high"] + df_s["low"] + df_s["close"]) / 3
+        _vs  = df_s["volume"].sum()
+        vwap = float((_tp * df_s["volume"]).sum() / _vs) if _vs > 0 else closes[-1]
+
+        # Volume ratio (current bar vs 20-bar avg)
+        _vol_avg  = float(df["volume"].rolling(20).mean().iloc[-1])
+        vol_ratio = float(df["volume"].iloc[-1]) / _vol_avg if _vol_avg > 0 else 1.0
+
+        # Last candle direction (close > open = bullish bar)
+        _last_open  = float(getattr(candles[-1], "open", closes[-1]))
+        last_candle_bullish = closes[-1] > _last_open
+
+        return MtfSnapshot(
+            adx=adx        if adx   == adx   else None,
+            di_plus=di_plus  if di_plus == di_plus else None,
+            di_minus=di_minus if di_minus == di_minus else None,
+            adx_rising=adx_rising,
+            ema_20=ema_20  if ema_20 == ema_20 else None,
+            ema_50=ema_50,
+            close_price=closes[-1],
+            vwap=vwap,
+            volume_ratio=vol_ratio,
+            last_candle_bullish=last_candle_bullish,
+        )
+    except Exception as exc:
+        _log.debug("mtf_5m.compute_error: %s", exc)
+        return None
+
+
 def _classify_regime(f: dict):
     """Classify market regime from features.
 
@@ -363,7 +445,7 @@ def _pick_strategy(regime):
     }.get(regime, StrategyType.DIRECTIONAL)
 
 
-def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regime, strategy, is_index: bool = False, option_chain_snap=None, max_pain: float | None = None, pcr: float | None = None, india_vix: float | None = None, vwap_touch_count: int = 0):
+def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regime, strategy, is_index: bool = False, option_chain_snap=None, max_pain: float | None = None, pcr: float | None = None, india_vix: float | None = None, vwap_touch_count: int = 0, mtf_5m=None):
     """Build SignalRequest from features. Returns None if inputs are insufficient."""
     from core.domain.enums.asset_type import AssetType
     from core.domain.enums.instrument_class import InstrumentClass
@@ -416,6 +498,9 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         # Momentum confirmations — used by TrendComponent for bonus scoring.
         adx_rising=f.get("adx_rising"),
         macd_hist_expanding=f.get("macd_hist_expanding"),
+        # Phase 14 MTF: 5-minute candle snapshot for TrendComponent overlay.
+        # None when 5m data is unavailable — never blocks signal generation.
+        mtf_5m=mtf_5m,
     )
 
     ctx = ScoreContext(
@@ -734,6 +819,42 @@ class SignalScannerService:
                 )
                 return "low_atr"
 
+        # ── Phase 14: 5-minute MTF snapshot (fail-open — never blocks) ──
+        # Fetch gap-filled 5m candles for the same symbol and compute a
+        # lightweight MtfSnapshot (EMA20/50, ADX/DI, VWAP). The result
+        # is stored in FeatureSnapshot.mtf_5m and in the features dict for
+        # analytics. Missing 5m data yields mtf_5m=None; TrendComponent and
+        # ConfidenceEngine both treat None as "no MTF adjustment".
+        mtf_5m = None
+        try:
+            await self._history.fetch_and_store(symbol, "5m")
+        except Exception as _fe5:
+            _log.debug("signal_scanner.mtf_5m_fetch_failed symbol=%s: %s", symbol, _fe5)
+        try:
+            _candles_5m = await self._history.get_latest(symbol, "5m", 80)
+            mtf_5m = _compute_5m_features(_candles_5m)
+        except Exception as _ce5:
+            _log.debug("signal_scanner.mtf_5m_compute_failed symbol=%s: %s", symbol, _ce5)
+
+        # Compute MTF alignment for analytics (pre-engine; stored in features dict).
+        # The actual score bonus is applied by TrendComponent — this is for attribution.
+        if mtf_5m is not None:
+            _bias_5m    = mtf_5m.bias()
+            _15m_bull   = (features.get("di_plus", 0) or 0) > (features.get("di_minus", 0) or 0)
+            _aligned_5m = (_15m_bull and _bias_5m == "BULLISH") or (not _15m_bull and _bias_5m == "BEARISH")
+            _conflict_5m = (_15m_bull and _bias_5m == "BEARISH") or (not _15m_bull and _bias_5m == "BULLISH")
+            features["mtf_alignment"] = _bias_5m
+            features["mtf_score_bonus"] = (4.0 if mtf_5m.adx_rising else 2.0) if _aligned_5m else (-3.0 if _conflict_5m else 0.0)
+            features["mtf_confidence_bonus"] = 5.0 if _aligned_5m else (-5.0 if _conflict_5m else 0.0)
+            _log.info(
+                "signal_scanner.mtf symbol=%s bias_5m=%s aligned=%s score_bonus=%.0f",
+                symbol, _bias_5m, _aligned_5m, features["mtf_score_bonus"],
+            )
+        else:
+            features["mtf_alignment"] = None
+            features["mtf_score_bonus"] = None
+            features["mtf_confidence_bonus"] = None
+
         # ── TRACE 4: Regime classification ────────────────────────────
         regime   = _classify_regime(features)
         strategy = _pick_strategy(regime)
@@ -787,6 +908,7 @@ class SignalScannerService:
             pcr=pcr_val,
             india_vix=india_vix,
             vwap_touch_count=_vwap_touches,
+            mtf_5m=mtf_5m,
         )
         if req is None:
             _log.debug(
