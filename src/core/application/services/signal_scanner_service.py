@@ -923,15 +923,17 @@ class SignalScannerService:
         option_play = None
         if result.accepted and result.direction in ("LONG", "SHORT") and self._option_chain is not None:
             try:
+                # Always refresh option chain from Kite before contract selection
+                # on accepted signals so that entry/SL/target reflect the current
+                # LTP, not a potentially minutes-old DB snapshot.
+                try:
+                    await self._option_chain.fetch_and_store(symbol)
+                    _log.debug("signal_scanner.chain_refreshed symbol=%s", symbol)
+                except Exception as _refresh_exc:
+                    _log.debug("signal_scanner.chain_refresh_failed symbol=%s: %s", symbol, _refresh_exc)
                 chain_data = await self._option_chain.get_latest(symbol)
                 if not chain_data or not chain_data.get("entries"):
-                    # Not in poller snapshot yet — fetch on-demand for this signal
-                    _log.debug("signal_scanner.option_chain_on_demand symbol=%s", symbol)
-                    try:
-                        await self._option_chain.fetch_and_store(symbol)
-                        chain_data = await self._option_chain.get_latest(symbol)
-                    except Exception:
-                        pass
+                    _log.debug("signal_scanner.option_chain_empty symbol=%s", symbol)
                 if chain_data and chain_data.get("entries"):
                     # Phase 4: DTE-aware IV percentile gate.
                     # On expiry day (0-DTE), IV percentile is structurally elevated (80-90th pct)
