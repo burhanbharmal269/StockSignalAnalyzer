@@ -1,4 +1,4 @@
-version: "1.1"   # bumped: research-calibrated weights (2026-06-18)
+version: "1.3"   # bumped: session VWAP fix, supertrend EMA50 fix, divergence penalty fix, regime hysteresis
                   # Sources: deep-research-report.md (intraday indicators),
                   #          deep-research-report(1).md (NIFTY/BANKNIFTY options strategy)
 
@@ -101,7 +101,7 @@ gates:
   min_score_to_execute: 70
   min_confidence_to_execute: 65
   data_completeness_min_pct: 60.0   # 5 of 7 components sufficient — OI_BUILDUP and OPTION_CHAIN unavailable without live market data
-  direction_conviction_min: 0.50    # raised from 0.45: research win rates (65-70%) demand clear conviction
+  direction_conviction_min: 0.47    # loosened from 0.50: was over-filtering SIDEWAYS regime signals
 
 # ---------------------------------------------------------------------------
 # Component 1 — OI Build-up (max 25 pts)
@@ -153,7 +153,9 @@ oi_buildup:
 # ---------------------------------------------------------------------------
 trend:
   # ADX gate — HARD GATE: ADX below this returns 0 regardless of direction
-  adx_gate: 15.0
+  # Research: ADX < 20 = weak/absent trend; backtests show 18% drawdown reduction
+  # by filtering signals when ADX < 20. Raised from 15.0 → 20.0 for intraday accuracy.
+  adx_gate: 20.0
 
   # ADX score tiers (Step 1)
   adx_weak: 25.0
@@ -186,12 +188,31 @@ trend:
   mtf_3_of_4_score: 3.0
   mtf_2_of_4_score: 1.0
 
-  # RSI gate (Step 6)
+  # RSI gate (Step 6) — acceptable range (wider boundary)
   rsi_long_min: 45.0
   rsi_long_max: 75.0
   rsi_short_min: 25.0
   rsi_short_max: 55.0
-  rsi_gate_score: 1.0
+  rsi_gate_score: 1.0          # base pts when in acceptable range
+  # RSI sweet-spot gradation (Step 6a) — ideal zone is 55-70 for LONG, 30-45 for SHORT.
+  # Research (AIMarketAnalyzer): 55-70 = momentum building, not exhausted; best option buyer entry.
+  rsi_long_sweet_min: 55.0
+  rsi_long_sweet_max: 70.0
+  rsi_short_sweet_min: 30.0
+  rsi_short_sweet_max: 45.0
+  rsi_sweet_bonus: 2.0         # extra +2 pts when RSI is in sweet spot (stacks with rsi_gate_score)
+  rsi_bad_penalty: -1.0        # penalty when RSI is outside acceptable range
+
+  # Prime time window bonus (Step 7)
+  # Research (AIMarketAnalyzer): 10:00-11:30 and 13:00-14:00 IST have statistically
+  # higher win rates — post-open momentum settled, institutional flow directional.
+  prime_time_bonus: 3.0
+
+  # ADX Rising bonus (Step 8)
+  # Research: rising ADX = trend is accelerating, not stalling — stronger continuation edge.
+  # min raised from 18.0 → 20.0 to match the gate; bonus only fires above the gate threshold.
+  adx_rising_min: 20.0
+  adx_rising_bonus: 2.0
 
 # ---------------------------------------------------------------------------
 # Component 3 — Option Chain Analysis (max 20 pts)
@@ -257,7 +278,9 @@ volume:
   volume_ratio_score_5: 15.0
 
   # Volume divergence penalty (Step 2)
-  divergence_penalty: 5.0
+  # Reduced from 5.0 → 3.0; threshold now requires ≥0.3% move AND ≤0.80× volume
+  # (was firing on ~50% of bars with >0 price move + <1.0 volume ratio)
+  divergence_penalty: 3.0
 
   # OBV confirmation (Step 3)
   obv_confirms_score: 2.0

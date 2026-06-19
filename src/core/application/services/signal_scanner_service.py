@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time as _dtime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -39,6 +39,19 @@ _MARKET_CLOSE        = (15, 30)
 _CANDLE_LIMIT        = 200   # bars to fetch per symbol
 _MAX_CONCURRENT      = 10    # simultaneous candle fetches (rate-limit Kite API)
 _CYCLE_BATCH_SIZE    = 50    # symbols per cycle — rotated randomly each run
+
+# Regime overlay: additional pts added to the minimum passing score (base 70) per regime.
+# "Base engine + regime overlay" pattern: engine scores against flat min_score=70,
+# scanner then adds a regime-specific bump so HIGH_VOL/SIDEWAYS require stronger evidence.
+# Keyed by MarketRegime string value to avoid circular import at module init time.
+_REGIME_SCORE_BUMP: dict[str, float] = {
+    "HIGH_VOLATILITY": 8.0,   # require 78+ in panic/spike markets (IV dislocated)
+    "SIDEWAYS":        3.0,   # require 73+ in choppy markets (was 75; most signals are SIDEWAYS regime)
+}
+
+# Stock liquidity gate: reject thin-volume stock F&O before any scoring.
+# Ratio vs own 20-bar avg volume — index futures (NIFTY/BNF) are exempt (deep liquidity).
+_STOCK_MIN_VOLUME_RATIO = 0.25
 
 
 def _ist_now() -> datetime:
@@ -88,19 +101,55 @@ def _compute_features(candles) -> dict:
 
         df = pd.DataFrame({"close": closes, "high": highs, "low": lows, "volume": vols})
 
+        # Session-only VWAP index: institutional VWAP resets at 09:15 IST each day.
+        # Candle list is newest-last (chronological). Find the first candle of today's
+        # session so VWAP is computed from 09:15 only — not a 3-day rolling average.
+        _today_ist = _ist_now().date()
+        _session_start_idx = 0
+        for _i, _c in enumerate(candles):
+            _ts = getattr(_c, "date", None) or getattr(_c, "timestamp", None)
+            if _ts is not None:
+                try:
+                    _cd = _ts.date() if hasattr(_ts, "date") else _ts
+                    if _cd >= _today_ist:
+                        _session_start_idx = _i
+                        break
+                except Exception:
+                    pass
+
         # ADX / DI+/-
         adx_ind = ta.trend.ADXIndicator(df["high"], df["low"], df["close"], window=14)
         adx      = adx_ind.adx().iloc[-1]
         di_plus  = adx_ind.adx_pos().iloc[-1]
         di_minus = adx_ind.adx_neg().iloc[-1]
+        adx_series = adx_ind.adx().dropna()
+        adx_rising = bool(
+            len(adx_series) >= 3 and float(adx_series.iloc[-1]) > float(adx_series.iloc[-3])
+        )
+
+        # MACD (12/26/9) — momentum direction and histogram expansion
+        _macd_ind = ta.trend.MACD(df["close"], window_slow=26, window_fast=12, window_sign=9)
+        macd_line   = _macd_ind.macd().iloc[-1]
+        macd_signal = _macd_ind.macd_signal().iloc[-1]
+        _macd_hist_series = _macd_ind.macd_diff().dropna()
+        macd_hist_expanding: bool | None = None
+        if len(_macd_hist_series) >= 2:
+            _h_cur  = float(_macd_hist_series.iloc[-1])
+            _h_prev = float(_macd_hist_series.iloc[-2])
+            macd_hist_expanding = abs(_h_cur) > abs(_h_prev)
 
         # EMAs
         ema_20  = ta.trend.EMAIndicator(df["close"], window=20).ema_indicator().iloc[-1]
         ema_50  = ta.trend.EMAIndicator(df["close"], window=50).ema_indicator().iloc[-1] if len(df) >= 50 else None
         ema_200 = ta.trend.EMAIndicator(df["close"], window=200).ema_indicator().iloc[-1] if len(df) >= 200 else None
 
-        # ATR
-        atr = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], window=14).average_true_range().iloc[-1]
+        # ATR + ATR ratio (expansion detection for breakout regime classification)
+        # atr_ratio > 1.3 = volatility expanding; < 0.7 = compression still intact
+        _atr_ind    = ta.volatility.AverageTrueRange(df["high"], df["low"], df["close"], window=14)
+        _atr_series = _atr_ind.average_true_range().dropna()
+        atr         = float(_atr_series.iloc[-1])
+        _atr_mean10 = float(_atr_series.rolling(10).mean().iloc[-1]) if len(_atr_series) >= 10 else float(_atr_series.mean())
+        atr_ratio   = atr / _atr_mean10 if _atr_mean10 > 0 else 1.0
 
         # RSI
         rsi = ta.momentum.RSIIndicator(df["close"], window=14).rsi().iloc[-1]
@@ -115,29 +164,46 @@ def _compute_features(candles) -> dict:
         vol_avg   = df["volume"].rolling(20).mean().iloc[-1]
         vol_ratio = float(df["volume"].iloc[-1]) / float(vol_avg) if vol_avg > 0 else 1.0
 
-        # Approx VWAP
-        tp   = (df["high"] + df["low"] + df["close"]) / 3
-        vwap = (tp * df["volume"]).sum() / df["volume"].sum() if df["volume"].sum() > 0 else closes[-1]
+        # Session VWAP — computed only on today's candles (resets at 09:15 IST).
+        # Using all 200 candles (50 hrs) produced a multi-day average that sits at a
+        # completely different level than the intraday VWAP institutions actually use.
+        df_session = df.iloc[_session_start_idx:] if _session_start_idx > 0 else df
+        _tp_session = (df_session["high"] + df_session["low"] + df_session["close"]) / 3
+        _vol_sum    = df_session["volume"].sum()
+        vwap = float((_tp_session * df_session["volume"]).sum() / _vol_sum) if _vol_sum > 0 else closes[-1]
 
         close      = closes[-1]
         prev_close = closes[-2] if len(closes) > 1 else close
 
         price_change_pct = (close - prev_close) / prev_close * 100 if prev_close else 0.0
 
-        vwap_std              = float(df["close"].rolling(20).std().iloc[-1]) or 1.0
-        vwap_deviation_sigma  = (close - float(vwap)) / vwap_std if vwap_std else 0.0
+        # VWAP deviation uses session std-dev so sigma scale is calibrated to today
+        _session_closes = df_session["close"]
+        vwap_std              = float(_session_closes.std()) if len(_session_closes) > 1 else (float(df["close"].rolling(20).std().iloc[-1]) or 1.0)
+        vwap_std              = vwap_std or 1.0
+        vwap_deviation_sigma  = (close - float(vwap)) / vwap_std
 
-        # Supertrend approximation (sign of (close - VWAP))
-        supertrend_direction = 1 if close > float(vwap) else -1
+        # Supertrend: replaced the VWAP-alias with EMA50 cross — independent signal.
+        # close > EMA50 = bullish trend continuation; close < EMA50 = bearish.
+        # This eliminates the double-counting between TREND and VWAP components.
+        _ema50_val = float(ema_50) if ema_50 is not None and ema_50 == ema_50 else None
+        supertrend_direction = (1 if close > _ema50_val else -1) if _ema50_val is not None else None
 
         # OI change from consecutive candles — Kite includes OI in F&O historical data.
         # oi_change_pct feeds the OI_BUILDUP scoring component (Component 1, weight 25).
-        curr_oi = getattr(candles[-1], "oi", 0) or 0
-        prev_oi = getattr(candles[-2], "oi", 0) or 0 if len(candles) >= 2 else 0
-        oi_change_pct: float | None = (
-            (curr_oi - prev_oi) / prev_oi * 100.0
-            if prev_oi > 0 else None
-        )
+        # Use 3-bar smoothed average to reduce single-candle rollover noise near expiry.
+        if len(candles) >= 6:
+            _recent_oi = sum(getattr(c, "oi", 0) or 0 for c in candles[-3:]) / 3
+            _prior_oi  = sum(getattr(c, "oi", 0) or 0 for c in candles[-6:-3]) / 3
+            oi_change_pct: float | None = (
+                (_recent_oi - _prior_oi) / _prior_oi * 100.0 if _prior_oi > 0 else None
+            )
+        elif len(candles) >= 2:
+            _curr_oi = getattr(candles[-1], "oi", 0) or 0
+            _prev_oi = getattr(candles[-2], "oi", 0) or 0
+            oi_change_pct = (_curr_oi - _prev_oi) / _prev_oi * 100.0 if _prev_oi > 0 else None
+        else:
+            oi_change_pct = None
 
         # IV percentile proxy — BB width percentile is a reliable volatility regime
         # proxy: wide bands = high realised vol = typically high implied vol.
@@ -174,6 +240,14 @@ def _compute_features(candles) -> dict:
                 vpoc_price = price_min + (vpoc_bin + 0.5) * bin_width
                 vpoc_distance_pct = (close - vpoc_price) / vpoc_price * 100.0
 
+        # Cumulative delta (30-bar): net buy/sell pressure from bar-close direction.
+        # Close above previous close → buying pressure; below → selling pressure.
+        # Feeds VolumeComponent Step 4 (delta_confirms/against_score: ±2 pts).
+        _delta_diff = df["close"].diff().tail(30)
+        _delta_vol  = df["volume"].tail(30)
+        _delta_sign = _delta_diff.apply(lambda x: 1.0 if x > 0 else (-1.0 if x < 0 else 0.0))
+        cumulative_delta = float((_delta_sign * _delta_vol).sum())
+
         # Historical Volatility (HV) — 30-bar annualised realized vol from log returns.
         # HV/IV ratio feeds IVAnalysisComponent step 3:
         #   HV > IV (ratio > 1.2) → options are cheap → buy vol
@@ -197,6 +271,7 @@ def _compute_features(candles) -> dict:
             "ema_50": float(ema_50) if ema_50 and ema_50 == ema_50 else None,
             "ema_200": float(ema_200) if ema_200 and ema_200 == ema_200 else None,
             "atr": float(atr) if atr == atr else None,
+            "atr_ratio": float(atr_ratio),
             "rsi_14": float(rsi) if rsi == rsi else None,
             "bb_width_percentile": float(bb_pct),
             "volume_ratio": float(vol_ratio),
@@ -209,6 +284,11 @@ def _compute_features(candles) -> dict:
             "obv_trend": obv_trend,
             "vpoc_distance_pct": vpoc_distance_pct,
             "hv_iv_ratio": hv_iv_ratio,
+            "adx_rising": adx_rising,
+            "macd": float(macd_line) if macd_line == macd_line else None,
+            "macd_signal": float(macd_signal) if macd_signal == macd_signal else None,
+            "macd_hist_expanding": macd_hist_expanding,
+            "cumulative_delta": cumulative_delta,
         }
     except Exception as exc:
         _log.debug("feature_compute error: %s", exc)
@@ -216,19 +296,39 @@ def _compute_features(candles) -> dict:
 
 
 def _classify_regime(f: dict):
-    """Classify market regime from features."""
-    from core.domain.enums.market_regime import MarketRegime
-    adx    = f.get("adx") or 0
-    di_p   = f.get("di_plus") or 0
-    di_m   = f.get("di_minus") or 0
-    bb_pct = f.get("bb_width_percentile") or 0.5
+    """Classify market regime from features.
 
-    if adx > 30:
+    Thresholds aligned with strategy.yaml adx_gate (20) and research:
+      - TRENDING: ADX 25+ (research consensus for intraday momentum)
+      - HIGH_VOLATILITY: BB width in top-20th percentile
+      - LOW_VOLATILITY: ADX < 20 (below our gate) + compressed BB
+        → maps to BREAKOUT strategy; atr_ratio > 1.3 signals expansion is loading
+      - SIDEWAYS: everything else (ADX 20-25, moderate BB)
+    """
+    from core.domain.enums.market_regime import MarketRegime
+    adx     = f.get("adx") or 0
+    di_p    = f.get("di_plus") or 0
+    di_m    = f.get("di_minus") or 0
+    bb_pct  = f.get("bb_width_percentile") or 0.5
+    atr_rat = f.get("atr_ratio") or 1.0
+
+    # Strong trend: ADX ≥ 27 to ENTER trending regime (hysteresis upper band).
+    # Exit trending only when ADX < 22 (hysteresis lower band).
+    # Without hysteresis, ADX oscillating 24–26 across scans causes the regime to
+    # flip TRENDING↔SIDEWAYS every 5 min, destabilising dynamic multipliers for the
+    # same symbol within a session. With a 5-pt hysteresis band (22–27), the regime
+    # stays stable through normal ADX oscillation.
+    if adx >= 27:
         return MarketRegime.TRENDING_BULLISH if di_p > di_m else MarketRegime.TRENDING_BEARISH
-    if bb_pct > 0.8:
+    # Vol expansion: BB in top 20th pct OR ATR expanding sharply (>1.5×)
+    if bb_pct > 0.80 or atr_rat > 1.5:
         return MarketRegime.HIGH_VOLATILITY
-    if adx < 15 and bb_pct < 0.3:
+    # Compression: ADX in the hysteresis grey zone below exit threshold + narrow BB
+    # atr_ratio 1.2-1.5 with compression = breakout loading; LOW_VOLATILITY
+    # maps to BREAKOUT strategy in _pick_strategy()
+    if adx < 22 and bb_pct < 0.35:
         return MarketRegime.LOW_VOLATILITY
+    # Default: ADX 22-27 or moderate BB = choppy/range (hysteresis "grey zone")
     return MarketRegime.SIDEWAYS
 
 
@@ -245,7 +345,7 @@ def _pick_strategy(regime):
     }.get(regime, StrategyType.DIRECTIONAL)
 
 
-def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regime, strategy, is_index: bool = False, option_chain_snap=None, max_pain: float | None = None, pcr: float | None = None, india_vix: float | None = None):
+def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regime, strategy, is_index: bool = False, option_chain_snap=None, max_pain: float | None = None, pcr: float | None = None, india_vix: float | None = None, vwap_touch_count: int = 0):
     """Build SignalRequest from features. Returns None if inputs are insufficient."""
     from core.domain.enums.asset_type import AssetType
     from core.domain.enums.instrument_class import InstrumentClass
@@ -295,6 +395,9 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         # India VIX — fetched once per scan cycle from Kite (NSE:INDIA VIX).
         # Feeds IVAnalysisComponent step 1 (VIX structural penalty on short vol).
         india_vix=india_vix,
+        # Momentum confirmations — used by TrendComponent for bonus scoring.
+        adx_rising=f.get("adx_rising"),
+        macd_hist_expanding=f.get("macd_hist_expanding"),
     )
 
     ctx = ScoreContext(
@@ -314,6 +417,11 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         obv_trend=f.get("obv_trend"),
         # VPOC distance — feeds VolumeComponent step 5 (+1 pt at VPOC).
         vpoc_distance_pct=f.get("vpoc_distance_pct"),
+        # Cumulative delta — feeds VolumeComponent step 4 (±2 pts).
+        # Net buy/sell pressure from 30 bars of close-direction × volume.
+        cumulative_delta=f.get("cumulative_delta"),
+        # VWAP touch count — feeds VWAPComponent Mode A touch-degradation multiplier.
+        vwap_touch_count=vwap_touch_count,
         # Option chain from DB snapshot: PCR trend + OI walls + real IV/GEX when available.
         option_chain=option_chain_snap,
         # Max pain from OptionChainService strike OI calculation.
@@ -369,6 +477,11 @@ class SignalScannerService:
         # Per-symbol PCR history (last two readings) for trend detection.
         # Format: {symbol: [older_pcr, current_pcr]}
         self._pcr_history: dict[str, list[float]] = {}
+        # Per-symbol VWAP touch count — counts sigma-sign flips (VWAP crosses) per session.
+        # Feeds VWAPComponent Mode A touch-degradation multiplier (0.88 → 0.70 → 0.50).
+        self._vwap_touch_count: dict[str, int] = {}
+        self._vwap_last_sigma_sign: dict[str, int] = {}  # +1 or -1
+        self._vwap_touch_date: dict[str, date] = {}
 
     # ------------------------------------------------------------------
     # Background loop
@@ -456,7 +569,13 @@ class SignalScannerService:
 
         # ── TRACE 2: Concurrent processing with rate-limit semaphore ──
         semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
-        accepted = rejected = errors = 0
+        accepted = rejected = errors = gated = 0
+        _GATE_OUTCOMES = frozenset({
+            "opening_volatility", "closing_volatility", "vix_too_high",
+            "thin_volume", "rsi_extreme", "macd_against",
+            "regime_score_too_low", "iv_too_expensive", "expiry_day_gamma",
+            "no_contract",
+        })
         results  = await asyncio.gather(
             *[self._process_symbol_sem(sym, semaphore, india_vix) for sym in candidates],
             return_exceptions=True,
@@ -464,20 +583,28 @@ class SignalScannerService:
         for res in results:
             if isinstance(res, Exception):
                 errors += 1
+                _log.warning(
+                    "signal_scanner.symbol_exception type=%s msg=%s",
+                    type(res).__name__, str(res),
+                )
             elif res == "accepted":
                 accepted += 1
             elif res == "rejected":
                 rejected += 1
+            elif res in _GATE_OUTCOMES:
+                gated += 1
             else:
                 errors += 1
 
         _log.info(
-            "signal_scanner.cycle_summary accepted=%d rejected=%d errors=%d candidates=%d",
-            accepted, rejected, errors, len(candidates),
+            "signal_scanner.cycle_summary accepted=%d rejected=%d gated=%d errors=%d candidates=%d "
+            "(gated=pre-engine filters: thin_vol/rsi/macd/iv/no_contract/etc)",
+            accepted, rejected, gated, errors, len(candidates),
         )
         return {
             "accepted":   accepted,
             "rejected":   rejected,
+            "gated":      gated,
             "errors":     errors,
             "candidates": len(candidates),
         }
@@ -490,6 +617,28 @@ class SignalScannerService:
         """Process one universe symbol through the full pipeline. Returns 'accepted'/'rejected'/'error'."""
         symbol   = sym.symbol
         sym_type = "INDEX" if sym.is_index else "STOCK"
+
+        # ── Time-of-day hard gates (before any I/O) ───────────────────
+        # Opening volatility (9:15-9:30 IST): first 15 min = price discovery chaos,
+        # IV is dislocated, option spreads wide — no new entries.
+        # Closing volatility (≥15:00 IST): last 20 min before market-close exit fires
+        # at 15:20; a signal with 5-20 min to live has no meaningful hold window.
+        _now_ist = _ist_now().time()
+        if _dtime(9, 15) <= _now_ist < _dtime(9, 30):
+            return "opening_volatility"
+        if _now_ist >= _dtime(15, 0):
+            return "closing_volatility"
+
+        # ── India VIX hard gate ────────────────────────────────────────
+        # VIX ≥ 22: option premiums severely dislocated; directional buying
+        # has unfavourable risk-reward until VIX settles below 22 (AIMarketAnalyzer calibrated).
+        _VIX_GATE = 22.0
+        if india_vix is not None and india_vix >= _VIX_GATE:
+            _log.warning(
+                "signal_scanner.vix_gate symbol=%s vix=%.1f threshold=%.1f",
+                symbol, india_vix, _VIX_GATE,
+            )
+            return "vix_too_high"
 
         # ── TRACE 2: Historical candles ───────────────────────────────
         # Gap-fill: fetch any new candles since last stored timestamp before reading.
@@ -533,6 +682,20 @@ class SignalScannerService:
             f"{features['hv_iv_ratio']:.2f}" if features.get("hv_iv_ratio") is not None else "N/A",
         )
 
+        # ── Stock liquidity gate ──────────────────────────────────────
+        # Index futures (NIFTY, BANKNIFTY, FINNIFTY) always have deep liquidity.
+        # Stock F&O with < 25% of their own 20-bar average volume are too thin
+        # for reliable entry/exit — spread risk and slippage destroy edge.
+        if not sym.is_index:
+            _vol_ratio_chk = features.get("volume_ratio") or 1.0
+            if _vol_ratio_chk < _STOCK_MIN_VOLUME_RATIO:
+                _log.info(
+                    "signal_scanner.liquidity_gate symbol=%s vol_ratio=%.2f "
+                    "threshold=%.2f — thin volume, skipping",
+                    symbol, _vol_ratio_chk, _STOCK_MIN_VOLUME_RATIO,
+                )
+                return "thin_volume"
+
         # ── TRACE 4: Regime classification ────────────────────────────
         regime   = _classify_regime(features)
         strategy = _pick_strategy(regime)
@@ -563,6 +726,21 @@ class SignalScannerService:
         token    = sym.instrument_token or abs(hash(symbol)) % 1_000_000
         lot_size = sym.lot_size or 1
 
+        # Track VWAP crosses per session for Mode A touch-count degradation.
+        # Each time price crosses VWAP (sigma sign flips), increment the counter.
+        # Counter resets at the start of each trading day.
+        _sigma_now  = features.get("vwap_deviation_sigma", 0) or 0
+        _sigma_sign = 1 if _sigma_now >= 0 else -1
+        _today_vwap = _ist_now().date()
+        if self._vwap_touch_date.get(symbol) != _today_vwap:
+            self._vwap_touch_count[symbol] = 0
+            self._vwap_last_sigma_sign[symbol] = _sigma_sign
+            self._vwap_touch_date[symbol] = _today_vwap
+        elif self._vwap_last_sigma_sign.get(symbol, _sigma_sign) != _sigma_sign:
+            self._vwap_touch_count[symbol] = self._vwap_touch_count.get(symbol, 0) + 1
+            self._vwap_last_sigma_sign[symbol] = _sigma_sign
+        _vwap_touches = self._vwap_touch_count.get(symbol, 0)
+
         req = _build_signal_request(
             symbol, token, lot_size, features, regime, strategy,
             is_index=sym.is_index,
@@ -570,6 +748,7 @@ class SignalScannerService:
             max_pain=max_pain,
             pcr=pcr_val,
             india_vix=india_vix,
+            vwap_touch_count=_vwap_touches,
         )
         if req is None:
             _log.debug(
@@ -611,6 +790,47 @@ class SignalScannerService:
                     symbol, result.direction, _rsi,
                 )
                 return "rsi_extreme"
+
+        # Hard gate: MACD histogram expanding against direction.
+        # Original gate blocked any MACD/signal misalignment — too aggressive since
+        # MACD is a 26-bar lagging indicator and will lag price on early-day moves.
+        # Tighter rule: only block when the histogram is ACTIVELY EXPANDING against
+        # direction (bearish/bullish divergence is accelerating), not just slightly off.
+        if result.accepted and result.direction in ("LONG", "SHORT"):
+            _macd     = features.get("macd")
+            _macd_sig = features.get("macd_signal")
+            _hist_exp = features.get("macd_hist_expanding")
+            if _macd is not None and _macd_sig is not None:
+                _hist = _macd - _macd_sig
+                _macd_strongly_against = (
+                    (result.direction == "LONG"  and _hist < 0 and _hist_exp is True) or
+                    (result.direction == "SHORT" and _hist > 0 and _hist_exp is True)
+                )
+                if _macd_strongly_against:
+                    _log.warning(
+                        "signal_scanner.macd_gate symbol=%s direction=%s "
+                        "macd=%.4f signal=%.4f hist=%.4f expanding=True",
+                        symbol, result.direction, _macd, _macd_sig, _hist,
+                    )
+                    return "macd_against"
+
+        # ── Regime overlay score floor ────────────────────────────────
+        # The base engine scores against a flat min_score=70. In regimes where
+        # false signals are costly, we impose a stricter floor without touching
+        # the engine — "base engine + regime overlay" pattern.
+        if result.accepted:
+            # Use string value of regime enum for dict lookup (avoids circular import)
+            _regime_key = str(regime)
+            _bump   = _REGIME_SCORE_BUMP.get(_regime_key, 0.0)
+            _escore = result.adjusted_score or 0.0
+            _emin   = 70.0 + _bump
+            if _bump > 0 and _escore < _emin:
+                _log.warning(
+                    "signal_scanner.regime_overlay_reject symbol=%s regime=%s "
+                    "score=%.1f required=%.1f bump=%.1f",
+                    symbol, regime, _escore, _emin, _bump,
+                )
+                return "regime_score_too_low"
 
         # ── TRACE 6b: Option contract selection ───────────────────────────
         option_play = None
@@ -665,6 +885,16 @@ class SignalScannerService:
                                 symbol, _iv_pct, _iv_limit, _near_dte,
                             )
                             return "iv_too_expensive"
+
+                    # Expiry day gamma gate: on 0-DTE (expiry day), gamma risk
+                    # accelerates sharply after 11:00 IST — time decay destroys
+                    # long-option value even on correct directional moves.
+                    if _near_dte == 0 and _now_ist >= _dtime(11, 0):
+                        _log.warning(
+                            "signal_scanner.expiry_day_gamma symbol=%s time=%s",
+                            symbol, _now_ist,
+                        )
+                        return "expiry_day_gamma"
 
                     _dte_cfg  = self._signal_config.option_dte if self._signal_config else None
                     _risk_cfg = self._signal_config.intraday_risk if self._signal_config else None
@@ -809,23 +1039,23 @@ class SignalScannerService:
             ce_above = [
                 e for e in entries
                 if e.get("option_type") == "CE"
-                and (e.get("strike") or 0) > close_price
+                and float(e.get("strike") or 0) > close_price
                 and (e.get("oi") or 0) > 0
             ]
             if ce_above:
                 top_ce = max(ce_above, key=lambda e: e.get("oi") or 0)
-                call_wall_pct = ((top_ce["strike"] - close_price) / close_price) * 100.0
+                call_wall_pct = ((float(top_ce["strike"]) - close_price) / close_price) * 100.0
 
             # PE walls: strikes below current price, sorted by OI desc
             pe_below = [
                 e for e in entries
                 if e.get("option_type") == "PE"
-                and (e.get("strike") or 0) < close_price
+                and float(e.get("strike") or 0) < close_price
                 and (e.get("oi") or 0) > 0
             ]
             if pe_below:
                 top_pe = max(pe_below, key=lambda e: e.get("oi") or 0)
-                put_wall_pct = ((close_price - top_pe["strike"]) / close_price) * 100.0
+                put_wall_pct = ((close_price - float(top_pe["strike"])) / close_price) * 100.0
 
         # IV data from OptionChainService (Black-Scholes computed at fetch_and_store time)
         # iv_percentile is a rolling percentile vs last 252 trading days (None until 5+ days of data)

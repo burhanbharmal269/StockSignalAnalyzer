@@ -63,7 +63,7 @@ class OptionChainComponent(IScoreComponent):
         long_skew, short_skew = self._skew_scores(oc, cfg)
 
         # Step 3: GEX
-        long_gex, short_gex = self._gex_scores(oc, cfg)
+        long_gex, short_gex = self._gex_scores(oc, cfg, context.features.close_price)
 
         # Step 4: OI wall proximity
         long_wall, short_wall = self._wall_scores(oc, cfg)
@@ -154,23 +154,24 @@ class OptionChainComponent(IScoreComponent):
 
     @staticmethod
     def _gex_scores(
-        oc: OptionChainSnapshot | None, cfg: object
+        oc: OptionChainSnapshot | None, cfg: object, close_price: float | None = None
     ) -> tuple[float, float]:
         if oc is None or oc.gex_positive is None:
             return 0.0, 0.0
 
         if oc.gex_positive:
             # Positive GEX: market makers net long gamma, act as shock absorbers.
-            # They pin price toward the GEX concentration strike.
-            if oc.gex_strike is not None:
-                # If GEX strike is above price it pulls price up → helps LONG
-                # We can't compute this without close_price in oc, so give neutral bonus
-                return cfg.gex_aligned_score, cfg.gex_aligned_score
-            return 0.0, 0.0
+            # They pin price toward the GEX concentration strike — directional pull.
+            if oc.gex_strike is not None and close_price is not None:
+                # GEX strike above price → gravitational pull upward → helps LONG
+                if oc.gex_strike > close_price:
+                    return cfg.gex_aligned_score, 0.0
+                # GEX strike below price → gravitational pull downward → helps SHORT
+                return 0.0, cfg.gex_aligned_score
+            # No strike/price info → symmetric neutral bonus (data incomplete)
+            return cfg.gex_aligned_score, cfg.gex_aligned_score
 
-        # Negative GEX: market makers net short gamma, amplify moves.
-        # Amplification helps whichever direction the market is already going.
-        # Give the squeeze bonus to both since we don't know the recent direction here.
+        # Negative GEX: market makers net short gamma, amplify moves in either direction.
         return cfg.gex_squeeze_score, cfg.gex_squeeze_score
 
     @staticmethod

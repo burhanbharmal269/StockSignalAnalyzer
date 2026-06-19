@@ -1,6 +1,6 @@
 """Trend Following Component — Component 2 (base weight: 20).
 
-HARD GATE: ADX < 20 → long_score = 0, short_score = 0, direction = NEUTRAL.
+HARD GATE: ADX < gate → long_score = 0, short_score = 0, direction = NEUTRAL.
 This gate cannot be overridden by any other condition.
 
 Score formula:
@@ -9,14 +9,18 @@ Score formula:
   Step 3: EMA alignment (EMA20/50/200 stack on available timeframe)
   Step 4: Supertrend direction confirmation (+3)
   Step 5: Multi-timeframe alignment (approximated from available data)
-  Step 6: RSI momentum gate (+1 when not overbought/oversold)
+  Step 6: RSI momentum gate — gradated sweet-spot scoring
+  Step 7: Prime time window bonus (+3 in 10:00-11:30 and 13:00-14:00 IST)
+  Step 8: ADX Rising bonus (+2 when ADX accelerating)
 
 Source: docs/21_SIGNAL_ENGINE.md Component 2
 """
 
 from __future__ import annotations
 
+from datetime import datetime, time as _dtime
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from core.domain.interfaces.i_score_component import IScoreComponent
 from core.domain.value_objects.component_output import ComponentOutput
@@ -89,16 +93,28 @@ class TrendComponent(IScoreComponent):
         # Full MTF bonus requires data from multiple timeframes (Phase 14+)
         mtf_score = 0.0  # Conservative: no bonus without cross-TF data
 
-        # Step 6: RSI momentum gate
+        # Step 6: RSI momentum gate — gradated sweet-spot scoring
         long_rsi, short_rsi = self._rsi_gate(context.rsi_14, cfg)
 
-        # Combine: directional side gets ema + supertrend + rsi bonus
+        # Step 7: Prime time window bonus
+        prime = self._prime_time_bonus(cfg)
+
+        # Step 8: ADX Rising bonus — trend accelerating, not exhausting
+        adx_bonus = self._adx_rising_bonus(features.adx_rising, features.adx, cfg)
+
+        # Step 9: MACD histogram expansion bonus — momentum strengthening in direction.
+        # macd_hist_expanding was already computed in the scanner but never scored.
+        # +1 pt when histogram is growing (|current hist| > |previous hist|) — soft bonus
+        # only on the dominant direction, never on both, never large enough to swing a trade.
+        macd_hist_bonus = 1.0 if features.macd_hist_expanding else 0.0
+
+        # Combine: directional side gets ema + supertrend + rsi + time + adx + macd bonuses
         if long_is_dominant:
-            long_raw = adx_base + di_score + long_ema + long_st + mtf_score + long_rsi
+            long_raw = adx_base + di_score + long_ema + long_st + mtf_score + long_rsi + prime + adx_bonus + macd_hist_bonus
             short_raw = 0.0
         else:
             long_raw = 0.0
-            short_raw = adx_base + di_score + short_ema + short_st + mtf_score + short_rsi
+            short_raw = adx_base + di_score + short_ema + short_st + mtf_score + short_rsi + prime + adx_bonus + macd_hist_bonus
 
         long_score = max(0.0, min(float(_MAX_WEIGHT), long_raw))
         short_score = max(0.0, min(float(_MAX_WEIGHT), short_raw))
@@ -109,10 +125,13 @@ class TrendComponent(IScoreComponent):
         dominant_di = "+" if long_is_dominant else "-"
         ema_status = _ema_status_text(features)
 
+        prime_note = f" +{prime:.0f}pt prime-window" if prime > 0 else ""
+        adx_note   = f" +{adx_bonus:.0f}pt ADX↑" if adx_bonus > 0 else ""
         key_finding = (
             f"ADX {features.adx:.1f} with DI{dominant_di} leading by "
             f"{di_spread:.1f} pts. EMA: {ema_status}. "
             f"Supertrend: {_supertrend_text(features.supertrend_direction)}."
+            f"{prime_note}{adx_note}"
         )
 
         return ComponentOutput(
@@ -134,6 +153,9 @@ class TrendComponent(IScoreComponent):
                 "di_score": di_score,
                 "supertrend": features.supertrend_direction,
                 "rsi_14": context.rsi_14,
+                "prime_bonus": prime,
+                "adx_rising_bonus": adx_bonus,
+                "adx_rising": features.adx_rising,
             },
         )
 
@@ -204,13 +226,54 @@ class TrendComponent(IScoreComponent):
 
     @staticmethod
     def _rsi_gate(rsi: float | None, cfg: object) -> tuple[float, float]:
-        """Return (long_rsi_bonus, short_rsi_bonus)."""
+        """Gradated RSI scoring: sweet spot > acceptable range > outside = penalty.
+
+        Research (AIMarketAnalyzer): for option buyers the ideal RSI entry zone is
+        55-70 (LONG) / 30-45 (SHORT) — momentum is building, not exhausted.
+        Buying into RSI 70+ means paying inflated premium at the peak of a move.
+        """
         if rsi is None:
             return 0.0, 0.0
-        long_ok = cfg.rsi_long_min <= rsi <= cfg.rsi_long_max
-        short_ok = cfg.rsi_short_min <= rsi <= cfg.rsi_short_max
-        return (cfg.rsi_gate_score if long_ok else 0.0,
-                cfg.rsi_gate_score if short_ok else 0.0)
+
+        def _score_side(in_sweet: bool, in_range: bool) -> float:
+            if in_sweet:
+                return cfg.rsi_gate_score + cfg.rsi_sweet_bonus
+            if in_range:
+                return cfg.rsi_gate_score
+            return cfg.rsi_bad_penalty
+
+        long_sweet = cfg.rsi_long_sweet_min <= rsi <= cfg.rsi_long_sweet_max
+        long_range = cfg.rsi_long_min <= rsi <= cfg.rsi_long_max
+        short_sweet = cfg.rsi_short_sweet_min <= rsi <= cfg.rsi_short_sweet_max
+        short_range = cfg.rsi_short_min <= rsi <= cfg.rsi_short_max
+
+        return _score_side(long_sweet, long_range), _score_side(short_sweet, short_range)
+
+    @staticmethod
+    def _prime_time_bonus(cfg: object) -> float:
+        """Return bonus pts when scanning during high-probability IST windows.
+
+        10:00-11:30: post-open momentum — market settled, directional moves sustained.
+        13:00-14:00: post-lunch continuation — breakout window before close volatility.
+        Research (AIMarketAnalyzer): these windows have materially higher win rates.
+        """
+        now = datetime.now(ZoneInfo("Asia/Kolkata")).time()
+        if _dtime(10, 0) <= now <= _dtime(11, 30):
+            return cfg.prime_time_bonus
+        if _dtime(13, 0) <= now <= _dtime(14, 0):
+            return cfg.prime_time_bonus
+        return 0.0
+
+    @staticmethod
+    def _adx_rising_bonus(adx_rising: bool | None, adx: float | None, cfg: object) -> float:
+        """Return bonus when ADX is accelerating above the minimum meaningful level.
+
+        Rising ADX means the trend is strengthening — not exhausting — giving
+        higher confidence in trend-continuation option setups.
+        """
+        if adx_rising and adx is not None and adx >= cfg.adx_rising_min:
+            return cfg.adx_rising_bonus
+        return 0.0
 
 
 def _ema_status_text(features: object) -> str:

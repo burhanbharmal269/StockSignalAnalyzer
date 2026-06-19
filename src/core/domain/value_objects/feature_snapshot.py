@@ -38,6 +38,10 @@ class FeatureSnapshot:
     # Supertrend
     supertrend_direction: int | None = None  # +1 = bullish, -1 = bearish
 
+    # Momentum confirmation
+    adx_rising: bool | None = None           # True when ADX is increasing (trend accelerating)
+    macd_hist_expanding: bool | None = None  # True when MACD histogram magnitude is growing
+
     # Volatility
     atr: float | None = None
     atr_ratio: float | None = None          # current ATR / SMA-20 of ATR

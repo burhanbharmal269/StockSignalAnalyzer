@@ -137,10 +137,16 @@ class VolumeComponent(IScoreComponent):
         volume_ratio: float,
         cfg: object,
     ) -> float:
-        """Return penalty when price is rising/falling but volume is declining."""
+        """Return penalty when a meaningful price move occurs on clearly sub-average volume.
+
+        Previous threshold (>0 price, <1.0 volume) fired on ~50% of all bars because any
+        price tick and any sub-average volume triggered it, removing 5 pts regardless of
+        signal strength. Raised to meaningful thresholds: move ≥0.3% AND volume ≤0.80×.
+        Penalty reduced from -5 to -3 (still significant but not overwhelming).
+        """
         if price_change_pct is None:
             return 0.0
-        if abs(price_change_pct) > 0 and volume_ratio < 1.0:
+        if abs(price_change_pct) >= 0.30 and volume_ratio <= 0.80:
             return cfg.divergence_penalty
         return 0.0
 

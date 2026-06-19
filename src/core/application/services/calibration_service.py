@@ -28,7 +28,17 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
-_CALIBRATION_KEY_PREFIX = "confidence:calibration"
+_CALIBRATION_KEY_PREFIX  = "confidence:calibration"
+_CALIBRATION_LAST_RUN_KEY = "confidence:calibration:last_run_count"
+
+# All regime values (must match MarketRegime enum string values)
+_ALL_REGIMES = [
+    "TRENDING_BULLISH",
+    "TRENDING_BEARISH",
+    "SIDEWAYS",
+    "HIGH_VOLATILITY",
+    "LOW_VOLATILITY",
+]
 
 
 class CalibrationService:
@@ -116,6 +126,113 @@ class CalibrationService:
             factor,
         )
         return factor
+
+    async def run_regime_calibration(self) -> dict[str, dict[str, float]]:
+        """Compute calibration factors grouped by regime AND confidence bucket.
+
+        Regime-specific factors let the Confidence Engine apply a tighter
+        correction for regimes where the model is systematically wrong (e.g.,
+        HIGH_VOLATILITY signals are over-confident vs TRENDING where they are
+        well-calibrated).
+
+        Redis keys: ``confidence:calibration:{regime}:{lo}-{hi}``
+        Returns nested dict: {regime: {bucket_label: factor}}.
+        """
+        cutoff = datetime.now(UTC) - timedelta(days=self._cfg.lookback_days)
+        all_factors: dict[str, dict[str, float]] = {}
+
+        for regime in _ALL_REGIMES:
+            regime_factors: dict[str, float] = {}
+            for lo, hi in self._buckets():
+                label  = f"{lo}-{hi}"
+                factor = await self._compute_regime_bucket_factor(regime, lo, hi, cutoff)
+                regime_factors[label] = factor
+                key = f"{_CALIBRATION_KEY_PREFIX}:{regime}:{label}"
+                await self._redis.set(key, str(factor))
+                _log.debug(
+                    "calibration regime=%s bucket=%s factor=%.4f key=%s",
+                    regime, label, factor, key,
+                )
+            all_factors[regime] = regime_factors
+            _log.info("calibration.regime_done regime=%s buckets=%d", regime, len(regime_factors))
+
+        return all_factors
+
+    async def _compute_regime_bucket_factor(
+        self, regime: str, lo: float, hi: float, cutoff: datetime
+    ) -> float:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(
+                    func.count().label("total"),
+                    func.sum(
+                        func.cast(
+                            SignalPerformanceStatsOrm.outcome == "WIN", type_=None
+                        )
+                    ).label("wins"),
+                ).where(
+                    and_(
+                        SignalPerformanceStatsOrm.regime_at_signal == regime,
+                        SignalPerformanceStatsOrm.confidence >= lo,
+                        SignalPerformanceStatsOrm.confidence <= hi,
+                        SignalPerformanceStatsOrm.recorded_at >= cutoff,
+                    )
+                )
+            )
+            row   = result.one()
+            total = row.total or 0
+            wins  = row.wins  or 0
+
+        if total < self._cfg.min_bucket_size:
+            return 1.0
+
+        midpoint        = (lo + hi) / 2.0
+        actual_win_rate = (wins / total) * 100.0
+        error           = abs(midpoint - actual_win_rate)
+        if error <= self._error_threshold:
+            return 1.0
+
+        factor = actual_win_rate / midpoint if midpoint > 0.0 else 1.0
+        _log.warning(
+            "calibration regime=%s bucket=%d-%d error=%.1f%% factor=%.4f",
+            regime, lo, hi, error, factor,
+        )
+        return factor
+
+    async def run_if_new_outcomes(self, min_new_outcomes: int = 20) -> dict | None:
+        """Run calibration only when at least ``min_new_outcomes`` new signals
+        have been recorded since the last run.
+
+        Intended for daily cron invocation — avoids stale recalibration when
+        few signals were generated (weekend, holiday, kill-switch active).
+
+        Returns the calibration result dict or None when skipped.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(func.count()).where(
+                    SignalPerformanceStatsOrm.recorded_at
+                    >= datetime.now(UTC) - timedelta(days=self._cfg.lookback_days)
+                )
+            )
+            current_count: int = result.scalar_one() or 0
+
+        last_str = await self._redis.get(_CALIBRATION_LAST_RUN_KEY)
+        last_count = int(last_str) if last_str else 0
+
+        new_outcomes = current_count - last_count
+        if new_outcomes < min_new_outcomes:
+            _log.info(
+                "calibration.skipped new_outcomes=%d threshold=%d",
+                new_outcomes, min_new_outcomes,
+            )
+            return None
+
+        _log.info("calibration.triggered new_outcomes=%d", new_outcomes)
+        base_factors   = await self.run_calibration()
+        regime_factors = await self.run_regime_calibration()
+        await self._redis.set(_CALIBRATION_LAST_RUN_KEY, str(current_count))
+        return {"base": base_factors, "regime": regime_factors}
 
     @staticmethod
     def _buckets() -> list[tuple[int, int]]:

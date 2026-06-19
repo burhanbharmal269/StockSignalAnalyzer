@@ -5,8 +5,6 @@ Endpoints:
   PATCH /api/v1/settings/risk-capital   — update capital + key risk limits (persists to yaml + Redis)
 """
 
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 

@@ -109,6 +109,18 @@ class _TrendConfig(BaseModel):
     rsi_short_min: float = Field(gt=0)
     rsi_short_max: float = Field(gt=0)
     rsi_gate_score: float = Field(ge=0)
+    # RSI sweet-spot gradation (ideal zone scores higher than just-in-range)
+    rsi_long_sweet_min: float = Field(gt=0)
+    rsi_long_sweet_max: float = Field(gt=0)
+    rsi_short_sweet_min: float = Field(gt=0)
+    rsi_short_sweet_max: float = Field(gt=0)
+    rsi_sweet_bonus: float = Field(ge=0)   # extra pts when in sweet spot
+    rsi_bad_penalty: float = Field(le=0)   # penalty when outside acceptable range
+    # Prime time window bonus (10:00-11:30 and 13:00-14:00 IST are highest-win windows)
+    prime_time_bonus: float = Field(ge=0)
+    # ADX rising bonus — trend is accelerating, not exhausting
+    adx_rising_min: float = Field(ge=0)
+    adx_rising_bonus: float = Field(ge=0)
 
 
 class _OptionChainConfig(BaseModel):
