@@ -30,22 +30,22 @@ weights:
     #           IV less relevant in strong directional move (option premiums follow price).
     # -----------------------------------------------------------------------
     TRENDING_BULLISH:
-      OI_BUILDUP: 1.15    # OI buildup confirms trend direction — slightly lower than before
-      TREND: 1.40         # ADX+EMA+Supertrend most reliable signal in trend (was 1.30)
-      OPTION_CHAIN: 0.85  # OI walls still useful but trend overrides them (was 1.00)
-      VOLUME: 1.25        # OFI research: volume surge confirms trend (was 1.10)
-      VWAP: 1.50          # #1 intraday signal per research — price > VWAP = strong long bias (was 1.10)
-      SENTIMENT: 0.40     # Always neutral (NeutralProvider) — minimize noise contribution (was 1.00)
-      IV_ANALYSIS: 0.45   # IV regime less critical when price is trending strongly (was 0.70)
+      OI_BUILDUP: 1.20    # OI buildup + PCR confluence = institutional conviction
+      TREND: 1.45         # ADX+EMA+Supertrend stack is the primary momentum engine
+      OPTION_CHAIN: 0.90  # Wall clearance and PCR confirm room to target
+      VOLUME: 1.35        # Strong volume = sustained move; weak vol = fake breakout
+      VWAP: 1.60          # #1 intraday signal: VWAP bounce in trend = highest-prob entry
+      SENTIMENT: 0.40     # Always neutral (NeutralProvider) — minimize noise contribution
+      IV_ANALYSIS: 0.45   # IV regime less critical when price is trending strongly
 
     TRENDING_BEARISH:
-      OI_BUILDUP: 1.15    # OI buildup confirms bearish trend — slightly lower than before
-      TREND: 1.40         # Same as bullish — momentum continuation (was 1.30)
-      OPTION_CHAIN: 0.95  # Put OI walls matter slightly more in bear trend (was 1.10)
-      VOLUME: 1.25        # Volume confirms bearish moves too (was 1.10)
-      VWAP: 1.50          # Price < VWAP = strong short bias per research (was 1.10)
-      SENTIMENT: 0.40     # Minimize neutral noise (was 1.20)
-      IV_ANALYSIS: 0.50   # IV less critical when price is trending (was 1.10)
+      OI_BUILDUP: 1.20    # OI buildup confirms bearish institutional flow
+      TREND: 1.45         # Same as bullish — momentum continuation
+      OPTION_CHAIN: 0.95  # Put OI walls + PCR confirm downside room
+      VOLUME: 1.35        # Volume confirms bearish institutional offloading
+      VWAP: 1.60          # Price < VWAP = strong short bias; VWAP rejection = entry
+      SENTIMENT: 0.40     # Minimize neutral noise
+      IV_ANALYSIS: 0.50   # IV less critical when price is trending
 
     # -----------------------------------------------------------------------
     # SIDEWAYS — Iron Condor / Mean-Reversion territory
@@ -128,7 +128,7 @@ oi_buildup:
   # Research: dual confirmation materially improves win rate in NSE F&O positional setups.
   ofi_bullish_pcr_min: 1.0   # Long Build-up + PCR >= this = institutions hedging = confluence
   ofi_bearish_pcr_max: 0.9   # Short Build-up + PCR <= this = call euphoria = confluence
-  ofi_confluence_bonus: 3.0  # pts added to winning side when OI + PCR confirm direction
+  ofi_confluence_bonus: 4.0  # raised from 3: dual OI+PCR confirmation is a strong predictor of sustained moves
 
   # PCR adjustments
   pcr_bullish_low: 0.7
@@ -153,9 +153,11 @@ oi_buildup:
 # ---------------------------------------------------------------------------
 trend:
   # ADX gate — HARD GATE: ADX below this returns 0 regardless of direction
-  # Research: ADX < 20 = weak/absent trend; backtests show 18% drawdown reduction
-  # by filtering signals when ADX < 20. Raised from 15.0 → 20.0 for intraday accuracy.
-  adx_gate: 20.0
+  # Research: ADX < 22 = insufficient trend for option buying; the underlying
+  # won't travel far enough for option premium to gain 55% before theta decay.
+  # Raised from 20.0 → 22.0: LOW_VOL regime (ADX < 22) now scores 0 on TREND,
+  # which prevents weak-trend signals from clearing the 70-pt floor.
+  adx_gate: 22.0
 
   # ADX score tiers (Step 1)
   adx_weak: 25.0
@@ -169,9 +171,12 @@ trend:
   adx_score_very_strong: 20.0
 
   # DI spread thresholds (Step 2)
-  di_spread_no_signal: 5.0
-  di_spread_moderate: 10.0
-  di_spread_strong: 15.0
+  # Raised no_signal threshold 5→8: a DI spread of 5-7 means barely any
+  # directional dominance — price flip-flops and option buyer loses to theta.
+  # At DI spread ≥8, one direction is clearly dominant and the move sustains.
+  di_spread_no_signal: 8.0
+  di_spread_moderate: 12.0
+  di_spread_strong: 18.0
   di_spread_score_moderate: 3.0
   di_spread_score_strong: 5.0
   di_spread_score_very_strong: 7.0
@@ -190,29 +195,35 @@ trend:
 
   # RSI gate (Step 6) — acceptable range (wider boundary)
   rsi_long_min: 45.0
-  rsi_long_max: 75.0
-  rsi_short_min: 25.0
+  rsi_long_max: 72.0           # tightened from 75: RSI 72-75 = overbought entry = chasing
+  rsi_short_min: 28.0          # tightened from 25: RSI 25-28 = oversold entry = chasing
   rsi_short_max: 55.0
   rsi_gate_score: 1.0          # base pts when in acceptable range
-  # RSI sweet-spot gradation (Step 6a) — ideal zone is 55-70 for LONG, 30-45 for SHORT.
-  # Research (AIMarketAnalyzer): 55-70 = momentum building, not exhausted; best option buyer entry.
-  rsi_long_sweet_min: 55.0
-  rsi_long_sweet_max: 70.0
-  rsi_short_sweet_min: 30.0
-  rsi_short_sweet_max: 45.0
-  rsi_sweet_bonus: 2.0         # extra +2 pts when RSI is in sweet spot (stacks with rsi_gate_score)
+  # RSI sweet-spot gradation (Step 6a) — ideal zone for option buyers.
+  # Research: 58-68 LONG = momentum confirmed but not exhausted; best CE buyer entry.
+  # RSI 70+ entry means buying into the peak of the move — option premium is inflated
+  # and the underlying has less room before reversal, killing the 55% target.
+  rsi_long_sweet_min: 58.0
+  rsi_long_sweet_max: 68.0
+  rsi_short_sweet_min: 32.0
+  rsi_short_sweet_max: 42.0
+  rsi_sweet_bonus: 3.0         # raised from 2: sweet-spot entry is materially better for targets
   rsi_bad_penalty: -1.0        # penalty when RSI is outside acceptable range
 
   # Prime time window bonus (Step 7)
   # Research (AIMarketAnalyzer): 10:00-11:30 and 13:00-14:00 IST have statistically
   # higher win rates — post-open momentum settled, institutional flow directional.
-  prime_time_bonus: 3.0
+  # Raised 3→4: signals in prime window also have more intraday time to hit
+  # the 55% option target before theta accelerates toward close.
+  prime_time_bonus: 4.0
 
   # ADX Rising bonus (Step 8)
-  # Research: rising ADX = trend is accelerating, not stalling — stronger continuation edge.
-  # min raised from 18.0 → 20.0 to match the gate; bonus only fires above the gate threshold.
-  adx_rising_min: 20.0
-  adx_rising_bonus: 2.0
+  # Rising ADX = trend is accelerating, not stalling — key predictor that the
+  # underlying will keep moving after option entry (needed to reach 55% target).
+  # Raised from 2.0 → 3.0: trend acceleration is the single strongest predictor
+  # of a sustained move that clears our option premium target.
+  adx_rising_min: 22.0
+  adx_rising_bonus: 3.0
 
 # ---------------------------------------------------------------------------
 # Component 3 — Option Chain Analysis (max 20 pts)
@@ -249,13 +260,22 @@ option_chain:
   gex_squeeze_score: 2.0
 
   # OI Wall Proximity (Step 4)
-  oi_wall_close_pct: 0.5
-  oi_wall_medium_pct: 1.0
-  oi_wall_far_pct: 2.0
-  oi_wall_close_score: -3.0
-  oi_wall_medium_score: 0.0
-  oi_wall_far_score: 2.0
-  oi_wall_very_far_score: 3.0
+  # Recalibrated for 55%-target option buying strategy:
+  # For a 55% option premium gain, the underlying needs ~1.5-2% directional move
+  # (ATM CE delta ≈ 0.45; 55% of ₹35 premium = ₹19.25 gain ÷ 0.45 delta = ₹43 move
+  # on a ₹2800 stock ≈ 1.5%). If the OI wall is within 1.5% of price, price stalls
+  # there before giving us the necessary premium gain.
+  # Wall < 1.0%: immediate ceiling/floor — score penalises heavily
+  # Wall 1.0-2.0%: tight — still limits target reach, mild penalty
+  # Wall 2.0-3.0%: clear room — target reachable, positive score
+  # Wall > 3.0%: excellent room — strong positive; underlying has highway to target
+  oi_wall_close_pct: 1.0
+  oi_wall_medium_pct: 2.0
+  oi_wall_far_pct: 3.0
+  oi_wall_close_score: -6.0
+  oi_wall_medium_score: -2.0
+  oi_wall_far_score: 3.0
+  oi_wall_very_far_score: 5.0
 
   # PCR Direction Trend (Step 5)
   pcr_trend_confirms_score: 2.0
@@ -267,10 +287,15 @@ option_chain:
 # ---------------------------------------------------------------------------
 volume:
   # Volume ratio tiers (Step 1)
-  volume_ratio_tier_1: 0.5
-  volume_ratio_tier_2: 1.0
-  volume_ratio_tier_3: 1.5
-  volume_ratio_tier_4: 2.0
+  # Shifted thresholds upward: sustained directional moves (that reach 55% option
+  # targets) are almost always accompanied by 1.5-3× average volume. Average or
+  # below-average volume moves are institutional noise, not momentum.
+  # Tier_1 raised 0.5→0.7; tier_2 raised 1.0→1.2; tier_3 raised 1.5→1.8.
+  # This means: sub-average volume signals now score lower, failing the 70-pt floor.
+  volume_ratio_tier_1: 0.7
+  volume_ratio_tier_2: 1.2
+  volume_ratio_tier_3: 1.8
+  volume_ratio_tier_4: 2.5
   volume_ratio_score_1: 3.0
   volume_ratio_score_2: 6.0
   volume_ratio_score_3: 9.0

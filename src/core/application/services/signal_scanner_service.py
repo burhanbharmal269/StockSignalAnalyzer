@@ -63,6 +63,14 @@ _STOCK_MIN_VOLUME_RATIO = 0.60
 # (atr_ratio < 0.50 = current volatility less than half the stock's own recent average).
 _MIN_ATR_PCT_FOR_OPTIONS = 0.30
 
+# OI wall clearance gate: for a 55% option premium gain the underlying needs ~1.5-2%
+# directional move (ATM delta ≈ 0.45 → ₹19.25 gain on ₹35 option ≈ ₹43 move on ₹2800
+# stock ≈ 1.5%). If the dominant OI wall in the trade direction is within this distance,
+# price will stall at the wall before generating the premium gain — target won't be hit.
+# Exemption: index futures (NIFTY/BANKNIFTY) — their option walls shift faster and
+# intraday algo buying routinely breaks through them.
+_MIN_OI_WALL_CLEARANCE_PCT = 1.5
+
 
 def _ist_now() -> datetime:
     return datetime.now(UTC) + _IST_OFFSET
@@ -584,7 +592,7 @@ class SignalScannerService:
             "opening_volatility", "closing_volatility", "vix_too_high",
             "thin_volume", "low_atr", "rsi_extreme", "macd_against",
             "regime_score_too_low", "iv_too_expensive", "expiry_day_gamma",
-            "no_contract",
+            "no_contract", "wall_too_close", "obv_against_trend",
         })
         results  = await asyncio.gather(
             *[self._process_symbol_sem(sym, semaphore, india_vix) for sym in candidates],
@@ -863,6 +871,53 @@ class SignalScannerService:
                     symbol, regime, _escore, _emin, _bump,
                 )
                 return "regime_score_too_low"
+
+        # ── OI Wall Clearance Gate ────────────────────────────────────────
+        # For option buying to reach a 55% target, the underlying needs ~1.5% directional
+        # move. If the dominant OI wall in the signal's direction is within 1.5%, price
+        # will stall there before generating enough option premium gain.
+        # Only applies to stock F&O — index options walls shift with algo flow.
+        if result.accepted and not sym.is_index and oc_snap is not None:
+            _wall_dir = result.direction
+            if _wall_dir == "LONG" and oc_snap.nearest_call_wall_distance_pct is not None:
+                if oc_snap.nearest_call_wall_distance_pct < _MIN_OI_WALL_CLEARANCE_PCT:
+                    _log.warning(
+                        "signal_scanner.wall_gate symbol=%s direction=LONG "
+                        "ce_wall=%.1f%% min=%.1f%% — CE wall blocks target",
+                        symbol, oc_snap.nearest_call_wall_distance_pct, _MIN_OI_WALL_CLEARANCE_PCT,
+                    )
+                    return "wall_too_close"
+            elif _wall_dir == "SHORT" and oc_snap.nearest_put_wall_distance_pct is not None:
+                if oc_snap.nearest_put_wall_distance_pct < _MIN_OI_WALL_CLEARANCE_PCT:
+                    _log.warning(
+                        "signal_scanner.wall_gate symbol=%s direction=SHORT "
+                        "pe_wall=%.1f%% min=%.1f%% — PE wall blocks target",
+                        symbol, oc_snap.nearest_put_wall_distance_pct, _MIN_OI_WALL_CLEARANCE_PCT,
+                    )
+                    return "wall_too_close"
+
+        # ── OBV Direction Confirmation Gate (Trending regime only) ────────
+        # In a TRENDING regime, On-Balance Volume must not be flowing against the
+        # signal direction. OBV DOWN on a LONG in uptrend = institutional distribution
+        # while price is rising — the move is distribution-driven and will reverse
+        # before our option reaches the 55% target. In SIDEWAYS regime this is
+        # acceptable (mean-reversion logic; price can move against recent OBV).
+        if result.accepted and result.direction in ("LONG", "SHORT"):
+            from core.domain.enums.market_regime import MarketRegime
+            _obv = features.get("obv_trend")
+            _is_trending = regime in (MarketRegime.TRENDING_BULLISH, MarketRegime.TRENDING_BEARISH)
+            if _is_trending and _obv is not None:
+                _obv_against = (
+                    (result.direction == "LONG"  and _obv == "DOWN") or
+                    (result.direction == "SHORT" and _obv == "UP")
+                )
+                if _obv_against:
+                    _log.warning(
+                        "signal_scanner.obv_against_trend symbol=%s direction=%s "
+                        "obv=%s regime=%s — distribution against trend direction",
+                        symbol, result.direction, _obv, regime,
+                    )
+                    return "obv_against_trend"
 
         # ── TRACE 6b: Option contract selection ───────────────────────────
         option_play = None
