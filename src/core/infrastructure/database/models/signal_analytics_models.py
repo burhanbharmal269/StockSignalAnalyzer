@@ -82,6 +82,14 @@ class SignalAnalyticsOrm(Base):
     mtf_score_bonus: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
     mtf_confidence_bonus: Mapped[float | None] = mapped_column(Numeric(4, 1), nullable=True)
 
+    # Phase 15 — Data quality + realized P&L
+    # pnl_pct: realized P&L % for closed trade (set by outcome tracker)
+    # data_quality_score: 0-100 feed quality score at signal generation time (monitoring only)
+    # missing_sources: JSON list of sources unavailable at signal time
+    pnl_pct: Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
+    data_quality_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    missing_sources: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
     # Rejection tracking (for filter analytics)
     was_accepted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     rejection_reason: Mapped[str | None] = mapped_column(String(50), nullable=True)

@@ -418,3 +418,29 @@ iv_analysis:
   # Research: "avoid selling straddle when VIX is high — tail risk huge" (Report 2 §short straddle)
   vix_high_threshold: 20.0          # India VIX threshold (unchanged — calibrated for NSE range)
   vix_short_vol_penalty: 2.0
+
+# ---------------------------------------------------------------------------
+# Phase 15 — Risk Manager (portfolio-level controls)
+# Checked once per scan cycle. When any limit is breached, the entire
+# cycle is halted and no new signals are accepted.
+# ---------------------------------------------------------------------------
+risk_manager:
+  enabled: true
+
+  # Stop all signal generation when today's realized losses (sum of negative
+  # pnl_pct on closed accepted signals) exceed this percentage.
+  # 3.0 = halt after losing 3% of account value today.
+  daily_loss_limit_pct: 3.0
+
+  # Halt after this many consecutive losses on accepted closed signals.
+  # 5 consecutive losses in any strategy/regime = systematic breakdown.
+  max_consecutive_losses: 5
+
+  # Reject new signals when this many accepted signals are still open (no outcome).
+  # Prevents over-concentration: 5 open positions is the maximum simultaneous exposure.
+  max_open_positions: 5
+
+  # Reserved for live capital integration.
+  # Maximum exposure to a single underlying as % of account capital.
+  # Requires account_capital to be configured below when live trading is enabled.
+  max_underlying_exposure_pct: 20.0

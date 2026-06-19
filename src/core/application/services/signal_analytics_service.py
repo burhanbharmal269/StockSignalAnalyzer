@@ -124,6 +124,10 @@ class SignalAnalyticsService:
             "mtf_score_bonus":       features.get("mtf_score_bonus"),
             "mtf_confidence_bonus":  features.get("mtf_confidence_bonus"),
 
+            # Phase 15 — data quality monitoring (never affects scoring)
+            "data_quality_score":    features.get("data_quality_score"),
+            "missing_sources":       features.get("missing_sources"),
+
             "was_accepted": result.accepted,
             "rejection_reason": rejection,
 
@@ -153,6 +157,7 @@ class SignalAnalyticsService:
                         sentiment_score, iv_score, option_chain_score,
                         adx_at_signal, volume_ratio_at_signal, rsi_at_signal,
                         mtf_alignment, mtf_score_bonus, mtf_confidence_bonus,
+                        data_quality_score, missing_sources,
                         was_accepted, rejection_reason,
                         option_type, option_strike, option_expiry, option_symbol,
                         option_entry, option_sl, option_target
@@ -165,6 +170,7 @@ class SignalAnalyticsService:
                         :sentiment_score, :iv_score, :option_chain_score,
                         :adx_at_signal, :volume_ratio_at_signal, :rsi_at_signal,
                         :mtf_alignment, :mtf_score_bonus, :mtf_confidence_bonus,
+                        :data_quality_score, :missing_sources,
                         :was_accepted, :rejection_reason,
                         :option_type, :option_strike, :option_expiry, :option_symbol,
                         :option_entry, :option_sl, :option_target
@@ -193,8 +199,20 @@ class SignalAnalyticsService:
         return_5d_pct: float | None = None,
         time_to_target_minutes: int | None = None,
         time_to_stop_minutes: int | None = None,
+        pnl_pct: float | None = None,
     ) -> None:
-        """Update outcome fields for a stored signal analytics record."""
+        """Update outcome fields for a stored signal analytics record.
+
+        pnl_pct: realized P&L % for the trade.
+          WIN  → positive value (target hit return)
+          LOSS → negative value (stop loss return)
+          If not provided, derived from current_return_pct.
+        """
+        # Derive pnl_pct if not explicitly provided
+        _pnl = pnl_pct
+        if _pnl is None and current_return_pct is not None:
+            _pnl = current_return_pct if target_hit else (-abs(current_return_pct) if stop_hit else current_return_pct)
+
         async with self._sf() as db:
             await db.execute(
                 text("""
@@ -204,6 +222,7 @@ class SignalAnalyticsService:
                         stop_hit = :stop_hit,
                         mfe_pct = :mfe,
                         mae_pct = :mae,
+                        pnl_pct = :pnl,
                         current_return_pct = :cur,
                         return_1h_pct = :r1h,
                         return_1d_pct = :r1d,
@@ -215,7 +234,7 @@ class SignalAnalyticsService:
                 """),
                 {
                     "outcome": outcome, "target_hit": target_hit, "stop_hit": stop_hit,
-                    "mfe": mfe_pct, "mae": mae_pct, "cur": current_return_pct,
+                    "mfe": mfe_pct, "mae": mae_pct, "pnl": _pnl, "cur": current_return_pct,
                     "r1h": return_1h_pct, "r1d": return_1d_pct, "r5d": return_5d_pct,
                     "ttt": time_to_target_minutes, "tts": time_to_stop_minutes,
                     "now": datetime.now(UTC), "id": analytics_id,

@@ -23,9 +23,11 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from core.application.services.data_quality_service import DataQualityService
     from core.application.services.market_data.historical_data_service import HistoricalDataService
     from core.application.services.market_universe_service import MarketUniverseService
     from core.application.services.option_chain_service import OptionChainService
+    from core.application.services.risk_manager_service import RiskManagerService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
     from core.application.services.signal_engine_service import SignalEngineService
     from core.infrastructure.config.signal_config import SignalConfig
@@ -567,7 +569,9 @@ class SignalScannerService:
         analytics_svc: "SignalAnalyticsService | None" = None,
         option_chain_svc: "OptionChainService | None" = None,
         signal_config: "SignalConfig | None" = None,
+        risk_manager: "RiskManagerService | None" = None,
     ) -> None:
+        from core.application.services.data_quality_service import DataQualityService
         from core.application.services.option_strike_selector import OptionStrikeSelector
         self._universe        = universe_svc
         self._history         = historical_svc
@@ -575,6 +579,8 @@ class SignalScannerService:
         self._analytics       = analytics_svc
         self._option_chain    = option_chain_svc
         self._signal_config   = signal_config
+        self._risk_manager    = risk_manager
+        self._dq_service      = DataQualityService()
         self._strike_selector = OptionStrikeSelector()
         self._running         = False
         # Per-symbol PCR history (last two readings) for trend detection.
@@ -633,6 +639,24 @@ class SignalScannerService:
     # ------------------------------------------------------------------
 
     async def _scan_cycle(self) -> dict:
+        # ── Phase 15: Portfolio risk gate (once per cycle, not per symbol) ────
+        if self._risk_manager is not None:
+            _risk_allowed, _risk_reason = await self._risk_manager.check()
+            if not _risk_allowed:
+                _log.warning(
+                    "signal_scanner.risk_lock_triggered reason=%s — halting cycle",
+                    _risk_reason,
+                )
+                return {
+                    "accepted":     0,
+                    "rejected":     0,
+                    "gated":        0,
+                    "errors":       0,
+                    "candidates":   0,
+                    "risk_locked":  True,
+                    "risk_reason":  _risk_reason,
+                }
+
         # ── Pre-cycle: India VIX (once per cycle, shared across all symbols) ──
         india_vix: float | None = await self._fetch_india_vix()
         if india_vix is not None:
@@ -880,6 +904,43 @@ class SignalScannerService:
                 f"{oc_snap.iv_skew:.4f}" if oc_snap.iv_skew is not None else "N/A",
                 oc_snap.gex_positive if oc_snap.gex_positive is not None else "N/A",
             )
+
+        # ── Phase 15: Data Quality Score (monitoring-only, never gates signals) ─
+        try:
+            from datetime import timezone as _tz
+            _oc_age: float | None = None
+            if oc_snap is not None:
+                _oc_ts = oc_snap.snapshot_timestamp
+                if _oc_ts.tzinfo is None:
+                    _oc_ts = _oc_ts.replace(tzinfo=UTC)
+                _oc_age = (datetime.now(UTC) - _oc_ts).total_seconds() / 60.0
+
+            _last_candle_age: float | None = None
+            if candles:
+                _lc_ts = getattr(candles[-1], "date", None) or getattr(candles[-1], "timestamp", None)
+                if _lc_ts is not None and hasattr(_lc_ts, "hour"):
+                    # candle timestamp is a datetime; compute age in minutes
+                    _lc_aware = _lc_ts if getattr(_lc_ts, "tzinfo", None) else _lc_ts.replace(tzinfo=UTC)
+                    _last_candle_age = (datetime.now(UTC) - _lc_aware).total_seconds() / 60.0
+
+            _dq_report = self._dq_service.compute(
+                option_chain_age_minutes=_oc_age,
+                has_oi=features.get("oi_change_pct") is not None,
+                has_5m_candles=mtf_5m is not None,
+                has_vix=india_vix is not None,
+                has_gex=oc_snap is not None and oc_snap.gex_positive is not None,
+                underlying_candle_age_minutes=_last_candle_age,
+            )
+            features["data_quality_score"] = _dq_report.score
+            features["missing_sources"]    = _dq_report.missing_sources_json()
+            _log.debug(
+                "signal_scanner.data_quality symbol=%s score=%d missing=%s",
+                symbol, _dq_report.score, _dq_report.missing_sources,
+            )
+        except Exception as _dq_exc:
+            _log.debug("signal_scanner.data_quality_failed symbol=%s: %s", symbol, _dq_exc)
+            features["data_quality_score"] = None
+            features["missing_sources"]    = None
 
         # ── TRACE 5: Build SignalRequest ──────────────────────────────
         token    = sym.instrument_token or abs(hash(symbol)) % 1_000_000
