@@ -7,6 +7,7 @@ import {
   Shield, DollarSign, Briefcase, Server, BarChart2,
   Activity, FileText, Settings, LineChart, Target,
   CandlestickChart, Sparkles, Bot, Newspaper, FlaskConical, Filter, Brain,
+  PieChart, BookOpen, Microscope, MonitorDot, CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
@@ -16,6 +17,7 @@ const ICON_MAP = {
   Shield, DollarSign, Briefcase, Server, BarChart2,
   Activity, FileText, Settings, LineChart, Target,
   CandlestickChart, Sparkles, Bot, Newspaper, FlaskConical, Filter, Brain,
+  PieChart, BookOpen, Microscope, MonitorDot, CalendarDays,
 } as const;
 
 const NAV_ITEMS = [
@@ -42,6 +44,11 @@ const NAV_ITEMS = [
   { label: "Strategy Analytics", href: "/strategy-analytics", icon: "BarChart2" },
   { label: "Filter Analytics", href: "/filter-analytics", icon: "Filter" },
   { label: "Signal Intelligence", href: "/signal-intelligence", icon: "Brain" },
+  { label: "Portfolio Intel", href: "/portfolio-intelligence", icon: "PieChart" },
+  { label: "Post-Trade", href: "/post-trade", icon: "BookOpen" },
+  { label: "Research", href: "/research", icon: "Microscope" },
+  { label: "Operator", href: "/operator", icon: "MonitorDot" },
+  { label: "Weekly Report", href: "/weekly-report", icon: "CalendarDays" },
 ] as const;
 
 export function Sidebar() {

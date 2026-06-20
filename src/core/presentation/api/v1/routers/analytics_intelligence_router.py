@@ -64,13 +64,12 @@ router = APIRouter(prefix="/api/v1/analytics", tags=["Analytics Intelligence"])
 @router.get("/portfolio/dashboard", summary="Full portfolio intelligence dashboard")
 @inject
 async def get_portfolio_dashboard(
-    lookback_days: int = Query(30, ge=1, le=365),
     _user: CurrentUser = Depends(require_authenticated),  # noqa: B008
     svc: PortfolioIntelligenceService = Depends(  # noqa: B008
         Provide[ApplicationContainer.portfolio_intelligence_service]
     ),
 ) -> dict[str, Any]:
-    return await svc.get_portfolio_dashboard(lookback_days=lookback_days)
+    return await svc.get_portfolio_dashboard()
 
 
 @router.get("/portfolio/heat", summary="Current portfolio heat (open positions)")
