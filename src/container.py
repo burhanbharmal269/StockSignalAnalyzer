@@ -1408,3 +1408,110 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ai_client=ai_client,
         strategies=providers.List(),   # populated via factory
     )
+
+    # ── Phase 19 — Portfolio Intelligence ─────────────────────────────────────
+    portfolio_intelligence_service = providers.Singleton(
+        __import__(
+            "core.application.services.portfolio_intelligence_service",
+            fromlist=["PortfolioIntelligenceService"],
+        ).PortfolioIntelligenceService,
+        session_factory=db_session_factory,
+    )
+
+    # ── Phase 20.5 — Post-Trade Intelligence ──────────────────────────────────
+    post_trade_intelligence_service = providers.Singleton(
+        __import__(
+            "core.application.services.post_trade_intelligence_service",
+            fromlist=["PostTradeIntelligenceService"],
+        ).PostTradeIntelligenceService,
+        session_factory=db_session_factory,
+    )
+
+    trade_journey_service = providers.Singleton(
+        __import__(
+            "core.application.services.trade_journey_service",
+            fromlist=["TradeJourneyService"],
+        ).TradeJourneyService,
+        session_factory=db_session_factory,
+    )
+
+    component_attribution_service = providers.Singleton(
+        __import__(
+            "core.application.services.component_attribution_service",
+            fromlist=["ComponentAttributionService"],
+        ).ComponentAttributionService,
+        session_factory=db_session_factory,
+    )
+
+    strategy_evolution_service = providers.Singleton(
+        __import__(
+            "core.application.services.strategy_evolution_service",
+            fromlist=["StrategyEvolutionService"],
+        ).StrategyEvolutionService,
+        session_factory=db_session_factory,
+    )
+
+    weekly_intelligence_report_service = providers.Singleton(
+        __import__(
+            "core.application.services.weekly_intelligence_report_service",
+            fromlist=["WeeklyIntelligenceReportService"],
+        ).WeeklyIntelligenceReportService,
+        session_factory=db_session_factory,
+        strategy_evolution_svc=strategy_evolution_service,
+        component_attribution_svc=component_attribution_service,
+    )
+
+    # ── Phase 20.6 — Research Intelligence ───────────────────────────────────
+    trade_cohort_service = providers.Singleton(
+        __import__(
+            "core.application.services.trade_cohort_service",
+            fromlist=["TradeCohortService"],
+        ).TradeCohortService,
+        session_factory=db_session_factory,
+    )
+
+    edge_discovery_service = providers.Singleton(
+        __import__(
+            "core.application.services.edge_discovery_service",
+            fromlist=["EdgeDiscoveryService"],
+        ).EdgeDiscoveryService,
+        session_factory=db_session_factory,
+    )
+
+    trade_replay_service = providers.Singleton(
+        __import__(
+            "core.application.services.trade_replay_service",
+            fromlist=["TradeReplayService"],
+        ).TradeReplayService,
+        session_factory=db_session_factory,
+    )
+
+    loss_cluster_service = providers.Singleton(
+        __import__(
+            "core.application.services.loss_cluster_service",
+            fromlist=["LossClusterService"],
+        ).LossClusterService,
+        session_factory=db_session_factory,
+    )
+
+    operator_observability_service = providers.Singleton(
+        __import__(
+            "core.application.services.operator_observability_service",
+            fromlist=["OperatorObservabilityService"],
+        ).OperatorObservabilityService,
+        session_factory=db_session_factory,
+    )
+
+    research_dashboard_service = providers.Singleton(
+        __import__(
+            "core.application.services.research_dashboard_service",
+            fromlist=["ResearchDashboardService"],
+        ).ResearchDashboardService,
+        session_factory=db_session_factory,
+        cohort_svc=trade_cohort_service,
+        edge_svc=edge_discovery_service,
+        cluster_svc=loss_cluster_service,
+        observability_svc=operator_observability_service,
+        portfolio_svc=portfolio_intelligence_service,
+        strategy_evo_svc=strategy_evolution_service,
+    )

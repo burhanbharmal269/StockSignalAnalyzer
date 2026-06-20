@@ -63,6 +63,7 @@ from core.presentation.api.v1.routers.paper_daemon_router import router as paper
 from core.presentation.api.v1.routers.signal_intelligence_router import router as signal_intelligence_router
 from core.presentation.api.v1.routers.execution_router import router as execution_router
 from core.presentation.api.v1.routers.settings_router import router as settings_router
+from core.presentation.api.v1.routers.analytics_intelligence_router import router as analytics_intelligence_router
 
 logger = get_logger(__name__)
 
@@ -391,6 +392,7 @@ def create_app() -> FastAPI:
             "core.presentation.api.v1.routers.signal_intelligence_router",
             "core.presentation.api.v1.routers.execution_router",
             "core.presentation.api.v1.routers.settings_router",
+            "core.presentation.api.v1.routers.analytics_intelligence_router",
         ]
     )
     app.include_router(health_router)
@@ -421,6 +423,7 @@ def create_app() -> FastAPI:
     app.include_router(signal_intelligence_router)
     app.include_router(execution_router)
     app.include_router(settings_router)
+    app.include_router(analytics_intelligence_router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics_endpoint() -> Response:
