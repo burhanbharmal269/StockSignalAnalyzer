@@ -119,14 +119,10 @@ class ConfidenceEngineService(IConfidenceEngine):
         # Resolve fingerprint before the parallel gather (needed for historical_accuracy)
         fingerprint_sha = self._calc.fingerprint_for(context, score_result)
 
-        # Fetch all async data in parallel
-        (
-            win_rate,
-            historical_accuracy,
-            consecutive_losses,
-            recent_short,
-            recent_long,
-        ) = await asyncio.gather(
+        # Fetch all async data in parallel.
+        # return_exceptions=True: a single failing DB query yields None/[] for that
+        # input instead of cancelling all five queries and discarding the signal.
+        _gathered = await asyncio.gather(
             self._repo.get_win_rate(
                 regime=context.regime.value,
                 direction=score_result.direction,
@@ -151,7 +147,19 @@ class ConfidenceEngineService(IConfidenceEngine):
                 instrument=instrument,
                 limit=cfg.recent_performance.window_long,
             ),
+            return_exceptions=True,
         )
+        _failed = [r for r in _gathered if isinstance(r, Exception)]
+        if _failed:
+            _log.warning(
+                "confidence.partial_data instrument=%s failed=%d/%d first_error=%s",
+                instrument, len(_failed), len(_gathered), _failed[0],
+            )
+        win_rate            = None  if isinstance(_gathered[0], Exception) else _gathered[0]
+        historical_accuracy = None  if isinstance(_gathered[1], Exception) else _gathered[1]
+        consecutive_losses  = 0     if isinstance(_gathered[2], Exception) else _gathered[2]
+        recent_short        = []    if isinstance(_gathered[3], Exception) else _gathered[3]
+        recent_long         = []    if isinstance(_gathered[4], Exception) else _gathered[4]
 
         # Delegate formula to pure domain service (AC-11: deterministic)
         prelim = self._calc.calculate(

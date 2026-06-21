@@ -130,9 +130,10 @@ const columns: ColumnDef<Signal>[] = [
 
 export function RecentSignals() {
   useSignalLiveUpdates();
-  const { data, isLoading } = useSignals({ page_size: 10 });
+  const { data, isLoading, isError } = useSignals({ page_size: 10 });
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Loading…</p>;
+  if (isError) return <p className="text-sm text-destructive">Failed to load signals</p>;
 
   return (
     <DataTable

@@ -778,7 +778,11 @@ class SignalScannerService:
         except Exception as _fe:
             _log.debug("signal_scanner.candle_fetch_failed symbol=%s: %s", symbol, _fe)
 
-        candles = await self._history.get_latest(symbol, "15m", _CANDLE_LIMIT)
+        try:
+            candles = await self._history.get_latest(symbol, "15m", _CANDLE_LIMIT)
+        except Exception as _cl_exc:
+            _log.warning("signal_scanner.candle_read_failed symbol=%s: %s", symbol, _cl_exc)
+            return "rejected"
         if len(candles) < 20:
             _log.debug(
                 "signal_scanner.skip symbol=%s reason=insufficient_candles count=%d",
@@ -988,7 +992,14 @@ class SignalScannerService:
 
         # ── TRACE 6: Signal Engine (Score → Confidence → Risk) ────────
         _log.info("signal_scanner.engine_start symbol=%s", symbol)
-        result = await self._engine.process(req)
+        try:
+            result = await self._engine.process(req)
+        except Exception as _eng_exc:
+            _log.error(
+                "signal_scanner.engine_failed symbol=%s type=%s: %s",
+                symbol, type(_eng_exc).__name__, _eng_exc,
+            )
+            return "rejected"
         _log.info(
             "signal_scanner.engine_result symbol=%s accepted=%s "
             "score=%.1f confidence=%.1f rejection=%s duplicate=%s",

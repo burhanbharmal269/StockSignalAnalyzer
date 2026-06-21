@@ -32,7 +32,7 @@ export function DashboardView() {
 
   const { data: eas } = useEffectiveAccountState();
   const { data: positions } = usePositions({ state: "OPEN" });
-  const { data: signals } = useSignals({ state: "PENDING" });
+  const { data: signals } = useSignals({ state: "RISK_PENDING" });
 
   const totalUnrealizedPnL =
     (positions?.positions ?? []).reduce((sum, p) => sum + p.unrealized_pnl, 0);

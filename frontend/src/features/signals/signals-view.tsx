@@ -52,7 +52,7 @@ export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
   const [foOnly, setFoOnly] = useState(true);
-  const { data, isLoading } = useSignals(stateFilter ? { state: stateFilter } : {});
+  const { data, isLoading, isError } = useSignals(stateFilter ? { state: stateFilter } : {});
   const { approve, reject } = useSignalMutations();
 
   const signals = foOnly
@@ -259,6 +259,8 @@ export function SignalsView() {
       </div>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : isError ? (
+        <p className="text-sm text-destructive">Failed to load signals — backend may be unavailable</p>
       ) : (
         <DataTable
           columns={columns}
