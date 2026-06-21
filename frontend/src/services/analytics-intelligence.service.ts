@@ -238,49 +238,72 @@ export interface CohortResult {
 // ─── Edge Discovery ────────────────────────────────────────────────────────────
 
 export interface EdgeEntry {
-  score_bucket: string;
-  regime: string;
-  mtf_cohort: string;
+  combination: Record<string, string>;
+  label: string;
   count: number;
-  win_rate: number | null;
+  win_rate_pct: number | null;
   profit_factor: number | null;
-  expectancy: number | null;
-  avg_mfe: number | null;
-  avg_mae: number | null;
+  expectancy_pct: number | null;
+  avg_mfe_pct: number | null;
+  avg_mae_pct: number | null;
   edge: EdgeClass;
+}
+
+export interface EdgeCross {
+  description?: string;
+  combinations?: EdgeEntry[];
+  best?: EdgeEntry[];
+  worst?: EdgeEntry[];
+  error?: string;
 }
 
 export interface EdgeDiscoveryResult {
   lookback_days: number;
-  min_trades: number;
-  primary_edges: EdgeEntry[];
-  time_window_edges: EdgeEntry[];
-  dte_edges: EdgeEntry[];
-  double_confirmation_edges: EdgeEntry[];
-  top_edges: EdgeEntry[];
-  worst_edges: EdgeEntry[];
+  min_trades_threshold: number;
+  total_combinations: number;
+  edge_discovered_count: number;
+  no_edge_count: number;
+  top_10_combinations: EdgeEntry[];
+  bottom_10_combinations: EdgeEntry[];
+  edge_discovered: EdgeEntry[];
+  crosses: {
+    score_regime_mtf?: EdgeCross;
+    time_regime?: EdgeCross;
+    dte_regime?: EdgeCross;
+    score_confidence?: EdgeCross;
+  };
   evaluated_at: string;
 }
 
 // ─── Clusters ──────────────────────────────────────────────────────────────────
 
 export interface ClusterEntry {
-  cluster_id?: string | number;
-  pattern: string;
-  count: number;
-  loss_rate_pct?: number | null;
-  win_rate_pct?: number | null;
-  avg_mae?: number | null;
-  avg_mfe?: number | null;
-  avg_return?: number | null;
-  description?: string;
-  components?: string[];
+  cluster: string;
+  frequency: number;
+  pct_of_losses?: number | null;
+  pct_of_wins?: number | null;
+  avg_pnl_pct?: number | null;
+  avg_confidence?: number | null;
+  avg_mfe_pct?: number | null;
+  avg_mae_pct?: number | null;
+  avg_score?: number | null;
+  avg_time_to_target?: number | null;
+  avg_vol_ratio?: number | null;
+  failure_reason?: string;
+  success_reason?: string;
+  regime?: string;
+  mtf_cohort?: string;
+  time_window?: string;
+  score_bucket?: string;
+  dte_group?: string;
 }
 
 export interface ClusterResult {
   lookback_days?: number;
   top_n?: number;
-  clusters?: ClusterEntry[];
+  primary_clusters?: ClusterEntry[];
+  secondary_clusters?: ClusterEntry[];
+  score_clusters?: ClusterEntry[];
   evaluated_at?: string;
   error?: string;
 }
@@ -306,11 +329,11 @@ export interface ReplayTimeline {
 }
 
 export interface ReplayCoverage {
-  total_accepted: number;
-  signals_with_replay: number;
-  signals_without_replay: number;
+  total_completed_signals: number;
+  replayed_signals: number;
   coverage_pct: number;
-  evaluated_at: string;
+  total_replay_events: number;
+  avg_events_per_signal: number;
 }
 
 // ─── Operator Status ───────────────────────────────────────────────────────────
@@ -520,7 +543,7 @@ export const analyticsIntelligenceService = {
 
   triggerReplayBackfill: (limit = 300) =>
     apiClient
-      .post<{ processed: number; succeeded: number; failed: number; events_created: number }>(
+      .post<{ signals_processed: number; events_created: number; skipped: number; errors: number }>(
         "/analytics/replay/backfill",
         null,
         { params: { limit } }

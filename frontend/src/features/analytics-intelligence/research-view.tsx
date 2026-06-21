@@ -15,6 +15,7 @@ import type {
   EdgeEntry,
   ClusterEntry,
   Recommendation,
+  EdgeCross,
 } from "@/services/analytics-intelligence.service";
 
 const LOOKBACK_OPTIONS = [30, 60, 90, 180] as const;
@@ -106,31 +107,35 @@ function EdgeTable({ edges, title }: { edges: EdgeEntry[]; title: string }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-700/60 text-xs text-slate-400 uppercase">
-              <th className="pb-2 text-left">Score</th>
-              <th className="pb-2 text-left">Regime</th>
-              <th className="pb-2 text-left">MTF</th>
+              <th className="pb-2 text-left">Combination</th>
               <th className="pb-2 text-right">n</th>
               <th className="pb-2 text-right">Win %</th>
               <th className="pb-2 text-right">PF</th>
+              <th className="pb-2 text-right">Expectancy</th>
               <th className="pb-2 text-right">Edge</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-700/30">
             {edges.slice(0, 20).map((e, i) => (
               <tr key={i} className="hover:bg-slate-700/20">
-                <td className="py-2 text-slate-300 font-mono text-xs">{e.score_bucket}</td>
-                <td className="py-2 text-slate-300 text-xs">{e.regime}</td>
-                <td className="py-2 text-slate-400 text-xs">{e.mtf_cohort}</td>
+                <td className="py-2 text-slate-300 font-mono text-xs">{e.label}</td>
                 <td className="py-2 text-right tabular-nums text-slate-400">{e.count}</td>
                 <td className="py-2 text-right tabular-nums">
-                  {e.win_rate != null ? (
-                    <span className={e.win_rate >= 50 ? "text-emerald-400" : "text-red-400"}>
-                      {e.win_rate.toFixed(1)}%
+                  {e.win_rate_pct != null ? (
+                    <span className={e.win_rate_pct >= 50 ? "text-emerald-400" : "text-red-400"}>
+                      {e.win_rate_pct.toFixed(1)}%
                     </span>
                   ) : "—"}
                 </td>
                 <td className="py-2 text-right tabular-nums text-slate-300">
                   {e.profit_factor != null ? `${e.profit_factor.toFixed(2)}×` : "—"}
+                </td>
+                <td className="py-2 text-right tabular-nums">
+                  {e.expectancy_pct != null ? (
+                    <span className={e.expectancy_pct >= 0 ? "text-emerald-400" : "text-red-400"}>
+                      {e.expectancy_pct.toFixed(3)}%
+                    </span>
+                  ) : "—"}
                 </td>
                 <td className="py-2 text-right">
                   <EdgeBadge edge={e.edge} />
@@ -142,6 +147,10 @@ function EdgeTable({ edges, title }: { edges: EdgeEntry[]; title: string }) {
       </div>
     </div>
   );
+}
+
+function EdgeCrossTable({ cross, title }: { cross: EdgeCross | undefined; title: string }) {
+  return <EdgeTable edges={cross?.best ?? []} title={title} />;
 }
 
 function ClusterList({ clusters, isLoss }: { clusters: ClusterEntry[]; isLoss: boolean }) {
@@ -159,26 +168,21 @@ function ClusterList({ clusters, isLoss }: { clusters: ClusterEntry[]; isLoss: b
         >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-slate-200">{c.pattern}</p>
-              {c.description && <p className="mt-0.5 text-xs text-slate-500">{c.description}</p>}
-              {c.components && c.components.length > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {c.components.map((comp) => (
-                    <span key={comp} className="rounded bg-slate-700/60 px-1.5 py-0.5 text-xs text-slate-400">
-                      {comp}
-                    </span>
-                  ))}
-                </div>
+              <p className="text-sm font-medium text-slate-200">{c.cluster}</p>
+              {c.avg_pnl_pct != null && (
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Avg PnL: {c.avg_pnl_pct >= 0 ? "+" : ""}{c.avg_pnl_pct.toFixed(3)}%
+                </p>
               )}
             </div>
             <div className="shrink-0 text-right">
-              <p className="text-sm font-semibold tabular-nums text-slate-300">n={c.count}</p>
+              <p className="text-sm font-semibold tabular-nums text-slate-300">n={c.frequency}</p>
               {isLoss
-                ? c.loss_rate_pct != null && (
-                    <p className="text-xs text-red-400">{c.loss_rate_pct.toFixed(1)}% loss rate</p>
+                ? c.pct_of_losses != null && (
+                    <p className="text-xs text-red-400">{c.pct_of_losses.toFixed(1)}% of losses</p>
                   )
-                : c.win_rate_pct != null && (
-                    <p className="text-xs text-emerald-400">{c.win_rate_pct.toFixed(1)}% win rate</p>
+                : c.pct_of_wins != null && (
+                    <p className="text-xs text-emerald-400">{c.pct_of_wins.toFixed(1)}% of wins</p>
                   )
               }
             </div>
@@ -330,18 +334,18 @@ export default function ResearchView() {
             <>
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
-                  <EdgeTable edges={edges.data.top_edges ?? []} title="Top Discovered Edges" />
+                  <EdgeTable edges={edges.data.top_10_combinations ?? []} title="Top 10 Combinations (by expectancy)" />
                 </div>
                 <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
-                  <EdgeTable edges={edges.data.worst_edges ?? []} title="Worst Performing Combos" />
+                  <EdgeTable edges={edges.data.bottom_10_combinations ?? []} title="Bottom 10 Combinations" />
                 </div>
               </div>
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
-                  <EdgeTable edges={edges.data.time_window_edges ?? []} title="Time Window × Regime" />
+                  <EdgeCrossTable cross={edges.data.crosses?.score_regime_mtf} title="Score × Regime × MTF (primary)" />
                 </div>
                 <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
-                  <EdgeTable edges={edges.data.double_confirmation_edges ?? []} title="Score × Confidence Double Confirmation" />
+                  <EdgeCrossTable cross={edges.data.crosses?.time_regime} title="Time Window × Regime" />
                 </div>
               </div>
             </>
@@ -359,7 +363,10 @@ export default function ResearchView() {
             {lossClusters.isLoading ? (
               <p className="text-sm text-slate-500">Loading…</p>
             ) : (
-              <ClusterList clusters={lossClusters.data?.clusters ?? []} isLoss />
+              <ClusterList clusters={[
+                ...(lossClusters.data?.primary_clusters ?? []),
+                ...(lossClusters.data?.secondary_clusters ?? []),
+              ]} isLoss />
             )}
           </div>
           <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
@@ -369,7 +376,10 @@ export default function ResearchView() {
             {winnerClusters.isLoading ? (
               <p className="text-sm text-slate-500">Loading…</p>
             ) : (
-              <ClusterList clusters={winnerClusters.data?.clusters ?? []} isLoss={false} />
+              <ClusterList clusters={[
+                ...(winnerClusters.data?.primary_clusters ?? []),
+                ...(winnerClusters.data?.secondary_clusters ?? []),
+              ]} isLoss={false} />
             )}
           </div>
         </div>
@@ -397,15 +407,15 @@ export default function ResearchView() {
               <div className="space-y-4">
                 <div className="grid grid-cols-3 gap-3">
                   <div className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-4">
-                    <p className="text-xs text-slate-400 uppercase tracking-wider">Total Accepted</p>
+                    <p className="text-xs text-slate-400 uppercase tracking-wider">Completed Signals</p>
                     <p className="mt-1 text-2xl font-semibold text-slate-100">
-                      {replayCoverage.data.total_accepted}
+                      {replayCoverage.data.total_completed_signals}
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-4">
                     <p className="text-xs text-slate-400 uppercase tracking-wider">With Replay</p>
                     <p className="mt-1 text-2xl font-semibold text-emerald-400">
-                      {replayCoverage.data.signals_with_replay}
+                      {replayCoverage.data.replayed_signals}
                     </p>
                   </div>
                   <div className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-4">
@@ -423,7 +433,7 @@ export default function ResearchView() {
                 </div>
                 {replayBackfill.data && (
                   <p className="text-xs text-slate-500">
-                    Last backfill: {replayBackfill.data.processed} processed,
+                    Last backfill: {replayBackfill.data.signals_processed} processed,
                     {" "}{replayBackfill.data.events_created} events created
                   </p>
                 )}
