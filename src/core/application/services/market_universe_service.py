@@ -281,11 +281,12 @@ class MarketUniverseService:
 
             loop = asyncio.get_event_loop()
 
-            def _fetch_csv() -> set[str]:
+            def _fetch_csv() -> tuple[set[str], dict[str, int]]:
                 with urllib.request.urlopen(_KITE_INSTRUMENTS_URL, timeout=30) as resp:
                     text = resp.read().decode("utf-8")
                 reader = csv.DictReader(io.StringIO(text))
                 active_fo_names: set[str] = set()
+                lot_sizes: dict[str, int] = {}
                 for row in reader:
                     # NFO-FUT: stocks + indices with futures (implies options too)
                     # NFO-OPT: stocks that may have lost futures but still have options
@@ -293,9 +294,15 @@ class MarketUniverseService:
                         name = row.get("name", "").strip()
                         if name:
                             active_fo_names.add(name)
-                return active_fo_names
+                            try:
+                                ls = int(row.get("lot_size") or 0)
+                                if ls > 0 and name not in lot_sizes:
+                                    lot_sizes[name] = ls
+                            except (ValueError, TypeError):
+                                pass
+                return active_fo_names, lot_sizes
 
-            nfo_fut: set[str] = await loop.run_in_executor(None, _fetch_csv)
+            nfo_fut, fo_lot_sizes = await loop.run_in_executor(None, _fetch_csv)
             _log.info("universe.kite_instruments_fetched nfo_active_count=%d", len(nfo_fut))
 
         except Exception as exc:
@@ -305,6 +312,7 @@ class MarketUniverseService:
         all_symbols = await self._repo.get_active()
         promoted = demoted = unchanged = 0
 
+        lot_size_updated = 0
         for sym in all_symbols:
             if sym.is_index:
                 # Indices are always kept as is_fo=True regardless of NFO-FUT list
@@ -318,9 +326,15 @@ class MarketUniverseService:
                 demoted += 1
             else:
                 unchanged += 1
+            # Update lot size from Kite's authoritative instrument master
+            kite_lot = fo_lot_sizes.get(sym.symbol)
+            if kite_lot and sym.lot_size != kite_lot:
+                sym.lot_size = kite_lot
+                lot_size_updated += 1
 
-        if promoted + demoted > 0:
+        if promoted + demoted + lot_size_updated > 0:
             await self._repo.upsert_many(all_symbols)
+        _log.info("universe.lot_sizes_synced updated=%d", lot_size_updated)
 
         _log.info(
             "universe.fo_sync_done promoted=%d demoted=%d unchanged=%d",
