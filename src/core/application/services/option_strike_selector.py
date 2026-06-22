@@ -47,12 +47,12 @@ _DEFAULT_TARGET_A     = 0.35
 _DEFAULT_SL_B         = 0.15
 _DEFAULT_TARGET_B     = 0.28
 
-_MIN_LTP              = 8.0    # ignore strikes below ₹8: on cheaper options, 25% SL = ₹2 buffer which bid-ask noise alone can trigger
-_MIN_LTP_PCT          = 0.004  # also reject if premium < 0.4% of underlying (same reason)
+_MIN_LTP              = 4.0    # ignore strikes below ₹4: ATM 8-DTE options trade at ~2-3% of underlying, so ₹200+ stocks can have ~₹4-6 ATM premiums
+_MIN_LTP_PCT          = 0.004  # also reject if premium < 0.4% of underlying (catches very low-priced stocks)
 _MAX_LTP_PCT          = 0.030  # reject if premium > 3% of underlying (overpaying for IV)
-_MIN_OI_FLOOR         = 300    # minimum OI for liquid contract (raised from 100)
+_MIN_OI_FLOOR         = 300    # minimum OI for liquid contract
 _MAX_STRIKE_SPREAD    = 2      # evaluate ATM ± this many strikes for ranking
-_MIN_SL_BUFFER        = 2.0    # minimum absolute ₹ gap between entry and SL; tighter = random noise stops us out
+_MIN_SL_BUFFER        = 1.0    # minimum ₹ gap between entry and SL; 25% of ₹4 option = ₹1.00 buffer — adequate for NSE tick size
 _LATE_SESSION_START   = _dtime(13, 30)   # after this, reduce target to 35% — < 2 hours to close
 _LATE_TARGET_CAP      = 0.35             # cap on target_pct after 13:30 IST
 
