@@ -10,6 +10,7 @@ export function useSignals(filters = {}) {
   return useQuery({
     queryKey: ["signals", filters],
     queryFn: () => signalService.list(filters),
+    refetchInterval: 30_000,
     retry: (failureCount, error: unknown) => {
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status !== undefined && status >= 400 && status < 500) return false;

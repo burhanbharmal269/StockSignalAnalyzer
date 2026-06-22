@@ -169,6 +169,16 @@ class MarketUniverseService:
         "MIDCPNIFTY": 75,
     }
 
+    # Static lot size overrides for symbols absent or misnamed in Kite's instrument CSV.
+    # These are NSE-authoritative values — update when SEBI revises F&O lot sizes.
+    _LOT_SIZE_OVERRIDES: dict[str, int] = {
+        "TATAMOTORS": 550,
+    }
+
+    # Symbols that are genuine F&O stocks but appear under a different name (or not at all)
+    # in Kite's NFO instrument CSV — prevents the Kite sync from demoting them to is_fo=False.
+    _FO_ALWAYS: frozenset[str] = frozenset({"TATAMOTORS"})
+
     async def seed_default_universe(self, force: bool = False) -> int:
         """Seed the database with standard NSE + F&O symbols. Idempotent.
 
@@ -291,15 +301,19 @@ class MarketUniverseService:
                     # NFO-FUT: stocks + indices with futures (implies options too)
                     # NFO-OPT: stocks that may have lost futures but still have options
                     if row.get("segment") in ("NFO-FUT", "NFO-OPT"):
-                        name = row.get("name", "").strip()
-                        if name:
-                            active_fo_names.add(name)
-                            try:
-                                ls = int(row.get("lot_size") or 0)
-                                if ls > 0 and name not in lot_sizes:
-                                    lot_sizes[name] = ls
-                            except (ValueError, TypeError):
-                                pass
+                        name = row.get("name", "").strip().strip('"')
+                        # Also extract symbol prefix from tradingsymbol (e.g. "TATAMOTORS26JUNFUT" → "TATAMOTORS")
+                        tsym = row.get("tradingsymbol", "").strip()
+                        tsym_prefix = "".join(c for c in tsym if c.isalpha() or c in "-&")
+                        try:
+                            ls = int(row.get("lot_size") or 0)
+                        except (ValueError, TypeError):
+                            ls = 0
+                        for key in (name, tsym_prefix):
+                            if key:
+                                active_fo_names.add(key)
+                                if ls > 0 and key not in lot_sizes:
+                                    lot_sizes[key] = ls
                 return active_fo_names, lot_sizes
 
             nfo_fut, fo_lot_sizes = await loop.run_in_executor(None, _fetch_csv)
@@ -317,7 +331,7 @@ class MarketUniverseService:
             if sym.is_index:
                 # Indices are always kept as is_fo=True regardless of NFO-FUT list
                 continue
-            in_nfo = sym.symbol in nfo_fut
+            in_nfo = sym.symbol in nfo_fut or sym.symbol in self._FO_ALWAYS
             if in_nfo and not sym.is_fo:
                 sym.is_fo = True
                 promoted += 1
@@ -326,8 +340,8 @@ class MarketUniverseService:
                 demoted += 1
             else:
                 unchanged += 1
-            # Update lot size from Kite's authoritative instrument master
-            kite_lot = fo_lot_sizes.get(sym.symbol)
+            # Update lot size: Kite CSV first, static overrides as fallback
+            kite_lot = fo_lot_sizes.get(sym.symbol) or self._LOT_SIZE_OVERRIDES.get(sym.symbol)
             if kite_lot and sym.lot_size != kite_lot:
                 sym.lot_size = kite_lot
                 lot_size_updated += 1
