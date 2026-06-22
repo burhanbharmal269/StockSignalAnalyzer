@@ -790,6 +790,37 @@ class SignalScannerService:
             )
             return "rejected"
 
+        # ── Candle staleness gate ─────────────────────────────────────
+        # Intraday option signals MUST be based on today's price action.
+        # If fetch_and_store fails silently (Kite 403/timeout), we could be
+        # running on data from a prior trading day — completely wrong for
+        # ATM strike selection and momentum reading.
+        # Gate: latest candle must be from today (IST). During market hours
+        # a 15m candle is at most 15 min old; we also allow up to 45 min
+        # to handle the 9:15-9:30 opening window and transient feed delays.
+        _lc = candles[-1]
+        _lc_ts_raw = getattr(_lc, "date", None) or getattr(_lc, "timestamp", None)
+        if _lc_ts_raw is not None:
+            try:
+                _lc_aware = _lc_ts_raw if getattr(_lc_ts_raw, "tzinfo", None) else _lc_ts_raw.replace(tzinfo=UTC)
+                _lc_date_ist = (_lc_aware + _IST_OFFSET).date()
+                _today_ist   = _ist_now().date()
+                _lc_age_min  = (datetime.now(UTC) - _lc_aware).total_seconds() / 60
+                if _lc_date_ist < _today_ist:
+                    _log.warning(
+                        "signal_scanner.stale_candles symbol=%s last_candle=%s today=%s age_min=%.0f — skipping",
+                        symbol, _lc_date_ist, _today_ist, _lc_age_min,
+                    )
+                    return "stale_candles"
+                if _lc_age_min > 45:
+                    _log.warning(
+                        "signal_scanner.stale_candles symbol=%s last_candle_age_min=%.0f > 45 — skipping",
+                        symbol, _lc_age_min,
+                    )
+                    return "stale_candles"
+            except Exception:
+                pass  # if we can't parse timestamp, proceed and let scoring decide
+
         # ── TRACE 3: Feature computation ──────────────────────────────
         features = _compute_features(candles)
         if not features:

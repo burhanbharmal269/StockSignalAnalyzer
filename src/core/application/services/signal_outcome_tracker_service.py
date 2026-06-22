@@ -100,32 +100,153 @@ class SignalOutcomeTrackerService:
         return {"updated": updated, "skipped": skipped, "errors": errors}
 
     async def _compute_outcome(self, record: dict) -> dict | None:
-        """Compute outcome for one signal analytics record. Returns None if insufficient data."""
+        """Compute outcome for one signal analytics record. Returns None if insufficient data.
+
+        Routes to option-price tracking when the signal has option fields populated
+        (option_entry, option_sl, option_target, option_strike, option_type, option_expiry).
+        Falls back to stock-candle tracking when option data is absent.
+        """
+        created_at = record.get("created_at")
+        if not created_at:
+            return None
+
+        created_ts = created_at if isinstance(created_at, datetime) else datetime.fromisoformat(str(created_at))
+        if created_ts.tzinfo is None:
+            created_ts = created_ts.replace(tzinfo=UTC)
+
+        # Route to option tracking when all option fields are present
+        has_option_data = all(
+            record.get(f) is not None
+            for f in ("option_entry", "option_sl", "option_target", "option_strike", "option_type", "option_expiry")
+        )
+        if has_option_data:
+            return await self._compute_option_outcome(record, created_ts)
+
+        return await self._compute_stock_outcome(record, created_ts)
+
+    async def _compute_option_outcome(self, record: dict, created_ts: datetime) -> dict | None:
+        """Track outcome using option_chain_snapshots LTP time series.
+
+        Both CE (LONG signals) and PE (SHORT signals) are bought options, so:
+          MFE = (max_ltp - entry) / entry * 100   (option goes up = favourable)
+          MAE = (entry - min_ltp) / entry * 100   (option goes down = adverse)
+          target_hit when ltp >= option_target
+          stop_hit   when ltp <= option_sl
+        """
+        ticker      = record["ticker"]
+        opt_entry   = float(record["option_entry"])
+        opt_sl      = float(record["option_sl"])
+        opt_target  = float(record["option_target"])
+        opt_strike  = float(record["option_strike"])
+        opt_type    = str(record["option_type"])
+        opt_expiry  = record["option_expiry"]
+        opt_expiry_str = opt_expiry.isoformat() if hasattr(opt_expiry, "isoformat") else str(opt_expiry)[:10]
+
+        snapshots = await self._analytics.get_option_snapshots_after(
+            underlying=ticker,
+            strike=opt_strike,
+            option_type=opt_type,
+            expiry=opt_expiry_str,
+            after_ts=created_ts,
+        )
+
+        now_ts = datetime.now(UTC)
+
+        # Need at least 2 snapshots to compute meaningful metrics
+        if len(snapshots) < 2:
+            # Check if option has expired — mark EXPIRED rather than keep OPEN forever
+            from datetime import date as _date
+            expiry_date = opt_expiry if isinstance(opt_expiry, _date) else _date.fromisoformat(opt_expiry_str)
+            if now_ts.date() > expiry_date:
+                return {
+                    "outcome": "EXPIRED", "target_hit": False, "stop_hit": False,
+                    "mfe_pct": None, "mae_pct": None, "current_return_pct": None,
+                    "return_1h_pct": None, "return_1d_pct": None, "return_5d_pct": None,
+                    "time_to_target_minutes": None, "time_to_stop_minutes": None,
+                }
+            return None
+
+        ltps = [float(s["ltp"]) for s in snapshots]
+        timestamps = [s["captured_at"] for s in snapshots]
+        if timestamps[0].tzinfo is None:
+            timestamps = [t.replace(tzinfo=UTC) for t in timestamps]
+
+        max_ltp = max(ltps)
+        min_ltp = min(ltps)
+        mfe_pct = (max_ltp - opt_entry) / opt_entry * 100
+        mae_pct = (opt_entry - min_ltp) / opt_entry * 100 if min_ltp < opt_entry else 0.0
+
+        # Scan chronologically for SL / target hit
+        target_hit = False
+        stop_hit   = False
+        ttt_minutes: int | None = None
+        tts_minutes: int | None = None
+
+        for ltp, ts in zip(ltps, timestamps):
+            elapsed = int((ts - created_ts).total_seconds() / 60)
+            if ltp >= opt_target and not target_hit:
+                target_hit  = True
+                ttt_minutes = elapsed
+            if ltp <= opt_sl and not stop_hit:
+                stop_hit    = True
+                tts_minutes = elapsed
+
+        # Fixed-interval returns from snapshot timestamps
+        return_1h  = self._return_at_offset(ltps, timestamps, created_ts, minutes=60,   entry=opt_entry)
+        return_1d  = self._return_at_offset(ltps, timestamps, created_ts, minutes=390,  entry=opt_entry)  # ~6.5h session
+        return_5d  = self._return_at_offset(ltps, timestamps, created_ts, minutes=1950, entry=opt_entry)  # 5 sessions
+
+        current_return_pct = round((ltps[-1] - opt_entry) / opt_entry * 100, 4)
+
+        # Determine outcome
+        if target_hit and (not stop_hit or (ttt_minutes or 99999) < (tts_minutes or 99999)):
+            outcome = "WIN"
+        elif stop_hit:
+            outcome = "LOSS"
+        else:
+            from datetime import date as _date
+            expiry_date = opt_expiry if isinstance(opt_expiry, _date) else _date.fromisoformat(opt_expiry_str)
+            if now_ts.date() > expiry_date:
+                outcome = "PARTIAL" if mfe_pct > 1.0 else "EXPIRED"
+            else:
+                age_days = (now_ts - created_ts).days
+                if age_days >= _MAX_LOOK_AHEAD_DAYS:
+                    outcome = "PARTIAL" if mfe_pct > 1.0 else "EXPIRED"
+                else:
+                    outcome = "OPEN"
+
+        return {
+            "outcome":                outcome,
+            "target_hit":             target_hit,
+            "stop_hit":               stop_hit,
+            "mfe_pct":                round(mfe_pct, 4),
+            "mae_pct":                round(mae_pct, 4),
+            "current_return_pct":     current_return_pct,
+            "return_1h_pct":          return_1h,
+            "return_1d_pct":          return_1d,
+            "return_5d_pct":          return_5d,
+            "time_to_target_minutes": ttt_minutes,
+            "time_to_stop_minutes":   tts_minutes,
+        }
+
+    async def _compute_stock_outcome(self, record: dict, created_ts: datetime) -> dict | None:
+        """Fallback: track outcome using underlying stock 15m candles."""
         ticker      = record["ticker"]
         entry_price = record.get("entry_price")
         stop_price  = record.get("stop_loss_price")
         tgt_price   = record.get("target_price")
-        created_at  = record.get("created_at")
 
-        if not entry_price or not created_at:
+        if not entry_price:
             return None
 
         entry = float(entry_price)
         stop  = float(stop_price) if stop_price else None
         tgt   = float(tgt_price) if tgt_price else None
-
-        # Determine direction from stored value (default LONG if unknown)
         direction = record.get("direction", "LONG")
 
-        # Get candles from signal creation time
         candles = await self._history.get_latest(ticker, "15m", _CANDLES_FORWARD + 5)
         if len(candles) < 3:
             return None
-
-        # Find candles AFTER signal creation
-        created_ts = created_at if isinstance(created_at, datetime) else datetime.fromisoformat(str(created_at))
-        if created_ts.tzinfo is None:
-            created_ts = created_ts.replace(tzinfo=UTC)
 
         forward_candles = [c for c in candles if c.ts > created_ts]
         if len(forward_candles) < 2:
@@ -136,7 +257,6 @@ class SignalOutcomeTrackerService:
         lows    = [float(c.low)   for c in forward_candles]
         now_ts  = datetime.now(UTC)
 
-        # MFE / MAE
         if direction == "LONG":
             mfe_pct = (max(highs) - entry) / entry * 100 if highs else 0.0
             mae_pct = (entry - min(lows)) / entry * 100  if lows  else 0.0
@@ -144,43 +264,39 @@ class SignalOutcomeTrackerService:
             mfe_pct = (entry - min(lows)) / entry * 100  if lows  else 0.0
             mae_pct = (max(highs) - entry) / entry * 100 if highs else 0.0
 
-        # Returns at fixed intervals
-        candle_15m_count   = len(forward_candles)
-        return_1h  = self._return_after_n_candles(closes, 4,  direction, entry)   # 4 × 15m = 1h
-        return_1d  = self._return_after_n_candles(closes, 26, direction, entry)   # 26 × 15m ≈ 6.5h (1 session)
+        candle_15m_count = len(forward_candles)
+        return_1h  = self._return_after_n_candles(closes, 4,  direction, entry)
+        return_1d  = self._return_after_n_candles(closes, 26, direction, entry)
         return_5d  = self._return_after_n_candles(closes, min(130, candle_15m_count - 1), direction, entry)
 
-        # Target / stop hit detection
-        target_hit   = False
-        stop_hit     = False
-        ttt_minutes  = None  # time to target
-        tts_minutes  = None  # time to stop
+        target_hit  = False
+        stop_hit    = False
+        ttt_minutes = None
+        tts_minutes = None
 
-        for i, (h, l, c_ts) in enumerate(zip(highs, lows, [fc.ts for fc in forward_candles])):
+        for i, (h, l, _c_ts) in enumerate(zip(highs, lows, [fc.ts for fc in forward_candles])):
             bar_minutes = (i + 1) * 15
             if direction == "LONG":
                 if tgt and h >= tgt and not target_hit:
-                    target_hit   = True
-                    ttt_minutes  = bar_minutes
+                    target_hit  = True
+                    ttt_minutes = bar_minutes
                 if stop and l <= stop and not stop_hit:
-                    stop_hit     = True
-                    tts_minutes  = bar_minutes
+                    stop_hit    = True
+                    tts_minutes = bar_minutes
             else:
                 if tgt and l <= tgt and not target_hit:
-                    target_hit   = True
-                    ttt_minutes  = bar_minutes
+                    target_hit  = True
+                    ttt_minutes = bar_minutes
                 if stop and h >= stop and not stop_hit:
-                    stop_hit     = True
-                    tts_minutes  = bar_minutes
+                    stop_hit    = True
+                    tts_minutes = bar_minutes
 
-        # Current return (latest close vs entry)
         latest_price = closes[-1]
         if direction == "LONG":
             current_return_pct = round((latest_price - entry) / entry * 100, 4)
         else:
             current_return_pct = round((entry - latest_price) / entry * 100, 4)
 
-        # Determine outcome
         if target_hit and (not stop_hit or (ttt_minutes or 99999) < (tts_minutes or 99999)):
             outcome = "WIN"
         elif stop_hit:
@@ -188,7 +304,6 @@ class SignalOutcomeTrackerService:
         else:
             age_days = (now_ts - created_ts).days
             if age_days >= _MAX_LOOK_AHEAD_DAYS:
-                # PARTIAL: moved favourably (MFE > 0.5%) but never hit target
                 outcome = "PARTIAL" if mfe_pct > 0.5 else "EXPIRED"
             else:
                 outcome = "OPEN"
@@ -206,6 +321,27 @@ class SignalOutcomeTrackerService:
             "time_to_target_minutes": ttt_minutes,
             "time_to_stop_minutes":   tts_minutes,
         }
+
+    @staticmethod
+    def _return_at_offset(
+        ltps: list[float],
+        timestamps: list[datetime],
+        created_ts: datetime,
+        minutes: int,
+        entry: float,
+    ) -> float | None:
+        """Return % change at the snapshot closest to `minutes` after signal creation."""
+        target_ts = created_ts + timedelta(minutes=minutes)
+        # Find last snapshot at or before the target timestamp
+        best_ltp = None
+        for ltp, ts in zip(ltps, timestamps):
+            if ts <= target_ts:
+                best_ltp = ltp
+            else:
+                break
+        if best_ltp is None:
+            return None
+        return round((best_ltp - entry) / entry * 100, 4)
 
     @staticmethod
     def _return_after_n_candles(

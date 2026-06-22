@@ -251,7 +251,9 @@ class SignalAnalyticsService:
             result = await db.execute(
                 text("""
                     SELECT id, signal_id, ticker, direction, entry_price,
-                           stop_loss_price, target_price, created_at
+                           stop_loss_price, target_price, created_at,
+                           option_entry, option_sl, option_target,
+                           option_strike, option_type, option_expiry
                     FROM signal_analytics
                     WHERE was_accepted = true
                       AND outcome IS NULL
@@ -260,6 +262,44 @@ class SignalAnalyticsService:
                     LIMIT 200
                 """),
                 {"cutoff": cutoff},
+            )
+            return [dict(r._mapping) for r in result.fetchall()]
+
+    async def get_option_snapshots_after(
+        self,
+        underlying: str,
+        strike: float,
+        option_type: str,
+        expiry: str,
+        after_ts: datetime,
+    ) -> list[dict]:
+        """Fetch LTP time series for a specific option contract after a given timestamp.
+
+        Queries option_chain_snapshots — the poller stores these every ~1-2 minutes
+        while the market is open, giving a dense enough series for SL/target detection.
+        """
+        from datetime import date as _date
+        expiry_date = expiry if isinstance(expiry, _date) else _date.fromisoformat(expiry[:10])
+        async with self._sf() as db:
+            result = await db.execute(
+                text("""
+                    SELECT ltp, captured_at
+                    FROM option_chain_snapshots
+                    WHERE underlying = :underlying
+                      AND strike = :strike
+                      AND option_type = :opt_type
+                      AND expiry = :expiry
+                      AND captured_at > :after_ts
+                      AND ltp IS NOT NULL
+                    ORDER BY captured_at
+                """),
+                {
+                    "underlying": underlying,
+                    "strike":     strike,
+                    "opt_type":   option_type,
+                    "expiry":     expiry_date,
+                    "after_ts":   after_ts,
+                },
             )
             return [dict(r._mapping) for r in result.fetchall()]
 
