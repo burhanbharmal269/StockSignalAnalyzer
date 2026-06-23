@@ -702,6 +702,7 @@ class SignalScannerService:
             "thin_volume", "low_atr", "rsi_extreme", "macd_against",
             "regime_score_too_low", "iv_too_expensive", "expiry_day_gamma",
             "no_contract", "wall_too_close", "obv_against_trend",
+            "stale_candles",
         })
         results  = await asyncio.gather(
             *[self._process_symbol_sem(sym, semaphore, india_vix) for sym in candidates],
@@ -799,7 +800,7 @@ class SignalScannerService:
         # a 15m candle is at most 15 min old; we also allow up to 45 min
         # to handle the 9:15-9:30 opening window and transient feed delays.
         _lc = candles[-1]
-        _lc_ts_raw = getattr(_lc, "date", None) or getattr(_lc, "timestamp", None)
+        _lc_ts_raw = getattr(_lc, "ts", None) or getattr(_lc, "date", None) or getattr(_lc, "timestamp", None)
         if _lc_ts_raw is not None:
             try:
                 _lc_aware = _lc_ts_raw if getattr(_lc_ts_raw, "tzinfo", None) else _lc_ts_raw.replace(tzinfo=UTC)

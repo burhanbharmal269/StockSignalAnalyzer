@@ -138,13 +138,22 @@ class KiteMarketDataProvider(IMarketDataProvider):
         chunk_days = _MAX_DAYS.get(kite_interval, 60)
         cursor = from_dt
 
+        _IST_OFFSET = timedelta(hours=5, minutes=30)
+
         while cursor < to_dt:
             chunk_end = min(cursor + timedelta(days=chunk_days), to_dt)
             try:
+                # Kite historical_data() expects naive IST datetimes. Our internal
+                # datetimes are UTC-aware. Convert here so the API date range is correct.
+                def _to_ist_naive(dt: datetime) -> datetime:
+                    if dt.tzinfo is not None:
+                        return (dt + _IST_OFFSET).replace(tzinfo=None)
+                    return dt  # already assumed IST naive (legacy path)
+
                 raw: list[dict] = await loop.run_in_executor(
                     None,
                     lambda c=cursor, ce=chunk_end: self._get_kite().historical_data(
-                        token, c, ce, kite_interval, oi=True
+                        token, _to_ist_naive(c), _to_ist_naive(ce), kite_interval, oi=True
                     ),
                 )
                 for r in raw:
