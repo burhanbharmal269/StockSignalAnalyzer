@@ -163,24 +163,15 @@ class SqlAlchemySignalRepository(ISignalRepository):
             return signals
 
     async def get_active(self) -> list[Signal]:
-        # Include EXPIRED from last 24h so users can review today's closed
-        # signals after market close (MarketCloseExitService expires at 15:20).
+        # Show all signals from the last 24h so users can review today's activity,
+        # including RISK_REJECTED and WEAK_SIGNAL terminal states (read-only reference).
         yesterday = datetime.now(timezone.utc) - timedelta(hours=24)
         async with self._session_factory() as session:
             result = await session.execute(
                 select(SignalOrm)
-                .where(
-                    or_(
-                        SignalOrm.state.notin_(
-                            [s.value for s in _TERMINAL_STATES]
-                        ),
-                        and_(
-                            SignalOrm.state == SignalState.EXPIRED.value,
-                            SignalOrm.created_at >= yesterday,
-                        ),
-                    )
-                )
+                .where(SignalOrm.created_at >= yesterday)
                 .order_by(SignalOrm.created_at.desc())
+                .limit(500)
             )
             signals = [_to_domain(r) for r in result.scalars()]
             await _attach_prices(session, signals)

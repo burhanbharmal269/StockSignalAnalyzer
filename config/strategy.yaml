@@ -99,7 +99,7 @@ weights:
 # ---------------------------------------------------------------------------
 gates:
   min_score_to_execute: 70
-  min_confidence_to_execute: 65
+  min_confidence_to_execute: 63
   data_completeness_min_pct: 60.0   # 5 of 7 components sufficient — OI_BUILDUP and OPTION_CHAIN unavailable without live market data
   direction_conviction_min: 0.47    # loosened from 0.50: was over-filtering SIDEWAYS regime signals
 

@@ -361,8 +361,11 @@ def check_net_delta(
     For FUTURE: delta contribution = 1.0 × lot_size × direction_sign (full linear exposure).
     """
     direction_sign = 1.0 if request.direction == "LONG" else -1.0
-    if request.instrument_class == "OPTION" and request.option_delta is not None:
-        new_delta = request.option_delta * request.lot_size * direction_sign
+    if request.instrument_class == "OPTION":
+        # Use provided delta; fall back to 0.5 (conservative ATM estimate) when not set.
+        # Using lot_size as a delta substitute would be orders of magnitude too large.
+        effective_delta = request.option_delta if request.option_delta is not None else 0.5
+        new_delta = effective_delta * request.lot_size * direction_sign
     else:
         new_delta = float(request.lot_size) * direction_sign
 

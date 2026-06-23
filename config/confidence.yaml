@@ -99,7 +99,7 @@ calibration:
 # Execution gate
 gate:
   min_score: 70
-  min_confidence: 65
+  min_confidence: 63
 
 # Confidence ceiling by score band
 ceiling:

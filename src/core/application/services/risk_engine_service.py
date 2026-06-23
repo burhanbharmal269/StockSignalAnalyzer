@@ -179,7 +179,7 @@ class RiskEngineService:
                     self._corr_repo.get_matrix(),
                     self._margin_service.get_required_margin(
                         request.instrument_token,
-                        request.lot_size,
+                        1,  # check affordability for 1 lot; position sizer determines final count
                         margin_timeout,
                     ),
                     self._signal_perf_repo.get_sizing_stats(

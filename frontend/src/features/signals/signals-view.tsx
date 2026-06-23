@@ -51,7 +51,7 @@ function signalGrade(signal: Signal): "A" | "B" | null {
 export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
-  const [foOnly, setFoOnly] = useState(true);
+  const [foOnly, setFoOnly] = useState(false);
   const { data, isLoading, isError } = useSignals(stateFilter ? { state: stateFilter } : {});
   const { approve, reject } = useSignalMutations();
 
@@ -151,7 +151,7 @@ export function SignalsView() {
         const c = row.original.confidence;
         if (c == null) return <span className="text-muted-foreground text-xs">—</span>;
         const pct = c.toFixed(0);
-        const color = c >= 65 ? "text-profit" : c >= 50 ? "text-warning" : "text-muted-foreground";
+        const color = c >= 63 ? "text-profit" : c >= 50 ? "text-warning" : "text-muted-foreground";
         return <span className={cn("tabular-nums text-xs font-medium", color)}>{pct}%</span>;
       },
     },
