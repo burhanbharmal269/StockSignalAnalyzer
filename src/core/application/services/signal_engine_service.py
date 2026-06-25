@@ -219,23 +219,14 @@ class SignalEngineService:
         )
 
         if signal.state == SignalState.WEAK_SIGNAL:
-            explanation = self._explanation.build(
-                score_result=score_result,
-                confidence_result=confidence_result,
-                rejection_reason=(
-                    f"score={score_result.adjusted_score:.1f} "
-                    f"confidence={confidence_result.final_confidence:.1f} "
-                    f"gate=({self._config.gate.min_score}/{self._config.gate.min_confidence})"
-                ),
-            )
-            await self._persist(signal)
-            events = signal.pull_events()
-            await self._publish_events(events)
+            # Do NOT persist — weak signals never reached the risk engine and have
+            # no option contract. Saving them clutters the signals table with noise.
+            # The scanner's analytics service records them separately for diagnostics.
             return SignalResult(
                 accepted=False,
                 signal_id=signal.signal_id,
                 rejection_reason=SignalRejectionReason.WEAK_SIGNAL,
-                explanation=explanation,
+                explanation=None,
                 is_duplicate=False,
                 adjusted_score=score_result.adjusted_score,
                 final_confidence=confidence_result.final_confidence,

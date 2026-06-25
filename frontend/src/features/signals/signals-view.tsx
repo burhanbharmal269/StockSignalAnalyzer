@@ -51,7 +51,7 @@ function signalGrade(signal: Signal): "A" | "B" | null {
 export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
-  const [foOnly, setFoOnly] = useState(false);
+  const [foOnly, setFoOnly] = useState(true);
   const { data, isLoading, isError } = useSignals(stateFilter ? { state: stateFilter } : {});
   const { approve, reject } = useSignalMutations();
 
