@@ -39,8 +39,7 @@ _IST_OFFSET          = timedelta(hours=5, minutes=30)
 _MARKET_OPEN         = (9, 15)
 _MARKET_CLOSE        = (15, 30)
 _CANDLE_LIMIT        = 200   # bars to fetch per symbol
-_MAX_CONCURRENT      = 10    # simultaneous candle fetches (rate-limit Kite API)
-_CYCLE_BATCH_SIZE    = 50    # symbols per cycle — rotated randomly each run
+_MAX_CONCURRENT      = 15    # simultaneous candle fetches (rate-limit Kite API)
 
 # Regime overlay: additional pts added to the minimum passing score (base 70) per regime.
 # "Base engine + regime overlay" pattern: engine scores against flat min_score=70,
@@ -669,25 +668,20 @@ class SignalScannerService:
         index_futures = [s for s in all_symbols if s.is_index]
         fo_stocks     = [s for s in all_symbols if not s.is_index]
 
-        # Shuffle F&O stocks each cycle so different sectors get evaluated
+        # Scan ALL F&O symbols every cycle — no batching cap.
+        # Indices first, then all stocks (shuffled so no sector gets
+        # systematically last when a cycle overruns).
         shuffled_stocks = list(fo_stocks)
         random.shuffle(shuffled_stocks)
-
-        # Index futures always evaluated first (small, high-importance set)
-        # Then a rotating batch of F&O stocks up to CYCLE_BATCH_SIZE
-        batch_stocks = shuffled_stocks[:max(_CYCLE_BATCH_SIZE - len(index_futures), 0)]
-        candidates   = index_futures + batch_stocks
+        candidates = index_futures + shuffled_stocks
 
         _log.info(
             "signal_scanner.universe_loaded "
-            "total_fo=%d index_futures=%d fo_stocks=%d scanning=%d "
-            "(stock_batch=%d shuffled=%s)",
+            "total_fo=%d index_futures=%d fo_stocks=%d scanning=%d",
             len(all_symbols),
             len(index_futures),
             len(fo_stocks),
             len(candidates),
-            len(batch_stocks),
-            "yes",
         )
 
         if not candidates:
