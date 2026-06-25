@@ -9,7 +9,7 @@ version: "2.0"
 
 capital:
   total_capital: 150000          # INR — default ₹1,50,000; update via Settings → Trading
-  risk_per_trade_pct: 1.0        # 1% of capital risked per trade = ₹1,500 on ₹1.5L
+  risk_per_trade_pct: 10.0       # 10% of capital per trade = ₹15,000 on ₹1.5L (required for stock option lot costs)
 
 daily_loss:
   limit_pct: 2.0                 # 2% of capital = daily stop (₹3,000 on ₹1.5L)
@@ -87,8 +87,8 @@ position_sizing:
   atr_stop_multiplier: 1.5        # stop distance = ATR × multiplier (changed from 2.0)
   max_position_size_lots: 50      # absolute hard cap — Kelly and ATR output is min'd against this
   min_kelly_samples: 30           # minimum historical samples before Kelly is used
-  kelly_min_sample_fallback: 0.05 # fallback as fraction of kelly_fraction when samples < min
-                                  # effective fallback = 0.05 × 0.25 = 1.25% Kelly — very conservative
+  kelly_min_sample_fallback: 0.50 # fallback as fraction of kelly_fraction when samples < min
+                                  # effective fallback = 0.50 × 0.25 = 12.5% Kelly → ₹18,750 on ₹1.5L
 
 db:
   risk_decisions_insert_timeout_ms: 500   # INSERT timeout for persistence-first invariant

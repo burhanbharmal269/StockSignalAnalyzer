@@ -75,7 +75,12 @@ class PositionSizer:
             if request.option_premium is None:
                 cost_per_lot = 0.0
             else:
-                cost_per_lot = float(request.option_premium) * request.lot_size
+                # Risk per lot = loss at stop loss, not full premium.
+                # entry_price == option_premium for an option buy; stop_loss_price is the
+                # premium stop level. Using SL distance gives correct lot count for
+                # capital_at_risk: "how many lots where total SL loss = capital_at_risk."
+                sl_distance = float(request.entry_price - request.stop_loss_price)
+                cost_per_lot = max(sl_distance, 0.0) * request.lot_size
         elif request.instrument_class == "FUTURE":
             stop_distance = request.atr_14 * sizing_cfg.atr_stop_multiplier
             cost_per_lot = stop_distance * request.lot_size
