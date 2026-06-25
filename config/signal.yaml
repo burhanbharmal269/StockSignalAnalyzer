@@ -4,8 +4,8 @@ signal:
   market_close_time: "15:15:00"
   dedup_ttl_minutes: 30
   gate:
-    min_score: 60       # raised from 40 — signals below 60 are too weak for option buying
-    min_confidence: 45  # raised from 35 — minimum quality bar; below 45% = random noise
+    min_score: 70       # Grade A only — score 60-69 (Grade B) not reliable for intraday options
+    min_confidence: 55  # at score 70-83 max achievable confidence is 55-62 (no win-rate history)
 
   # Expiry window for option contract selection.
   # Intraday mode: prefer 2-8 DTE to avoid 0-DTE gamma risk (expiry day theta collapse).
