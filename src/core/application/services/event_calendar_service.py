@@ -165,11 +165,12 @@ class EventCalendarService:
                         text("""
                             INSERT INTO event_calendar
                                 (event_type, event_name, severity, affected_symbols,
-                                 start_time, end_time, source, reason, is_active)
+                                 event_date, start_time, end_time, source, reason, is_active)
                             VALUES
                                 (:etype, :name, :severity, NULL,
-                                 :start_time, :end_time, 'AUTO', :reason, true)
-                            ON CONFLICT (event_type, (start_time::date), source)
+                                 :event_date, :start_time, :end_time, 'AUTO', :reason, true)
+                            ON CONFLICT (event_type, event_date, source)
+                            WHERE source = 'AUTO'
                             DO UPDATE SET
                                 severity   = EXCLUDED.severity,
                                 event_name = EXCLUDED.event_name,
@@ -276,6 +277,7 @@ def _event_row(event_type: str, name: str, severity: str, ist_date: date) -> dic
         "etype":      event_type,
         "name":       name,
         "severity":   severity,
+        "event_date": ist_date,
         "start_time": start_utc,
         "end_time":   end_utc,
         "reason":     f"NSE F&O auto-seeded: {name}",

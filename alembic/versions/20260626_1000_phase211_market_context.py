@@ -95,6 +95,7 @@ def upgrade() -> None:
             sa.Column("event_name",       sa.String(120),  nullable=False),
             sa.Column("severity",         sa.String(20),   nullable=False),
             sa.Column("affected_symbols", sa.JSON(),       nullable=True),   # NULL = all symbols
+            sa.Column("event_date",       sa.Date(),       nullable=False),  # IST calendar date for dedup
             sa.Column("start_time",       sa.DateTime(timezone=True), nullable=False),
             sa.Column("end_time",         sa.DateTime(timezone=True), nullable=False),
             sa.Column("reason",           sa.Text(),       nullable=True),
@@ -105,15 +106,18 @@ def upgrade() -> None:
         )
         op.create_index("idx_ec_active_time",   "event_calendar",
                         ["is_active", "start_time", "end_time"])
-        op.create_index("idx_ec_event_type",    "event_calendar", ["event_type", "start_time"])
+        op.create_index("idx_ec_event_type",    "event_calendar", ["event_type", "event_date"])
+        op.create_index("idx_ec_event_date",    "event_calendar", ["event_date"])
 
-        # Dedup index for auto-seeded events: one event per (type, day, source)
+        # Dedup index for auto-seeded events: one event per (type, date, source)
         if not _index_exists("idx_ec_auto_dedup"):
-            op.get_bind().execute(sa.text("""
-                CREATE UNIQUE INDEX idx_ec_auto_dedup
-                ON event_calendar (event_type, (start_time::date), source)
-                WHERE source = 'AUTO'
-            """))
+            op.create_index(
+                "idx_ec_auto_dedup",
+                "event_calendar",
+                ["event_type", "event_date", "source"],
+                unique=True,
+                postgresql_where=sa.text("source = 'AUTO'"),
+            )
 
     # ── regime_transition_log ─────────────────────────────────────────────────
     if not _table_exists("regime_transition_log"):
