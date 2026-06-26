@@ -160,6 +160,128 @@ export interface SignalOverlay {
   rejection_reason: string | null;
 }
 
+// ─── Validation (Phase 22) ───────────────────────────────────────────────────
+
+export interface ReadinessCheck {
+  points: number;
+  max: number;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface ReadinessCategory {
+  score: number;
+  max: number;
+  checks: Record<string, ReadinessCheck>;
+}
+
+export interface DeploymentReadiness {
+  total_score: number;
+  max_score: number;
+  tier: "NOT_READY" | "LIMITED" | "READY_FOR_SMALL_CAPITAL" | "READY_FOR_SCALING";
+  categories: {
+    infrastructure:    ReadinessCategory;
+    strategy:          ReadinessCategory;
+    execution_quality: ReadinessCategory;
+    risk:              ReadinessCategory;
+    data_quality:      ReadinessCategory;
+  };
+  evaluated_at: string;
+}
+
+export interface GateCriterion {
+  criterion: string;
+  required:  string;
+  actual:    string | number;
+  passed:    boolean;
+}
+
+export interface GoNoGoGate {
+  gate:        string;
+  label:       string;
+  passed:      boolean;
+  criteria:    GateCriterion[];
+  explanation: string;
+}
+
+export interface GoNoGo {
+  current_gate:   string | null;
+  recommendation: string;
+  gates:          GoNoGoGate[];
+  trade_stats:    {
+    n:             number;
+    wins:          number;
+    losses:        number;
+    win_rate_pct:  number;
+    profit_factor: number | null;
+  };
+  evaluated_at: string;
+}
+
+export interface BugCheck {
+  pattern:        string;
+  detected:       boolean;
+  severity:       "OK" | "MEDIUM" | "HIGH" | "UNKNOWN";
+  description:    string;
+  evidence:       Record<string, unknown>;
+  recommendation: string;
+}
+
+export interface BugDetection {
+  summary: {
+    total_checks:  number;
+    detected:      number;
+    high_severity: number;
+    system_healthy: boolean;
+    sample_window: number;
+  };
+  checks:       BugCheck[];
+  evaluated_at: string;
+}
+
+export interface DriftCheck {
+  metric:       string;
+  reference:    number | null;
+  comparison:   number | null;
+  pct_change:   number | null;
+  z_stat:       number;
+  significance: "SIGNIFICANT" | "NOT_SIGNIFICANT" | "INSUFFICIENT_DATA";
+  direction:    "IMPROVED" | "DEGRADED" | "UNCHANGED";
+}
+
+export interface ProductionDrift {
+  periods: {
+    reference:  { start: string; end: string; days: number };
+    comparison: { start: string; end: string; days: number };
+  };
+  drift_checks: DriftCheck[];
+  summary: {
+    total_checks:       number;
+    significant_drifts: number;
+    system_stable:      boolean;
+  };
+  evaluated_at: string;
+}
+
+export interface ValidationHealthSummary {
+  overall:        "HEALTHY" | "NEEDS_ATTENTION" | "CRITICAL";
+  tier:           string;
+  score:          number;
+  gate:           string | null;
+  issues:         string[];
+  warnings:       string[];
+  recommendation: string;
+}
+
+export interface ValidationSummaryReport {
+  report_type:          "SUMMARY";
+  generated_at:         string;
+  health_summary:       ValidationHealthSummary;
+  deployment_readiness: DeploymentReadiness;
+  go_no_go:             GoNoGo;
+  bug_detection:        BugDetection;
+}
+
 // ─── Order ───────────────────────────────────────────────────────────────────
 // Matches backend OrderResponse schema
 

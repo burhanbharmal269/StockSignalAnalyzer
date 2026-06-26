@@ -241,6 +241,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
     signal_repository = providers.Singleton(
         SqlAlchemySignalRepository,
         session_factory=db_session_factory,
+        redis_client=redis_client,
     )
 
     order_repository = providers.Singleton(
@@ -1327,6 +1328,60 @@ class ApplicationContainer(containers.DeclarativeContainer):
             fromlist=["OverlayEffectivenessService"],
         ).OverlayEffectivenessService,
         session_factory=db_session_factory,
+    )
+
+    # ── Phase 22 — Validation, Readiness & Evidence Framework ────────────────
+
+    deployment_readiness_service = providers.Singleton(
+        __import__(
+            "core.application.services.deployment_readiness_service",
+            fromlist=["DeploymentReadinessService"],
+        ).DeploymentReadinessService,
+        session_factory=db_session_factory,
+    )
+
+    statistical_validation_service = providers.Singleton(
+        __import__(
+            "core.application.services.statistical_validation_service",
+            fromlist=["StatisticalValidationService"],
+        ).StatisticalValidationService,
+        session_factory=db_session_factory,
+    )
+
+    bug_detection_service = providers.Singleton(
+        __import__(
+            "core.application.services.bug_detection_service",
+            fromlist=["BugDetectionService"],
+        ).BugDetectionService,
+        session_factory=db_session_factory,
+    )
+
+    production_drift_service = providers.Singleton(
+        __import__(
+            "core.application.services.production_drift_service",
+            fromlist=["ProductionDriftService"],
+        ).ProductionDriftService,
+        session_factory=db_session_factory,
+    )
+
+    go_no_go_service = providers.Singleton(
+        __import__(
+            "core.application.services.go_no_go_service",
+            fromlist=["GoNoGoService"],
+        ).GoNoGoService,
+        session_factory=db_session_factory,
+    )
+
+    validation_report_service = providers.Singleton(
+        __import__(
+            "core.application.services.validation_report_service",
+            fromlist=["ValidationReportService"],
+        ).ValidationReportService,
+        deployment_readiness_service=deployment_readiness_service,
+        statistical_validation_service=statistical_validation_service,
+        bug_detection_service=bug_detection_service,
+        production_drift_service=production_drift_service,
+        go_no_go_service=go_no_go_service,
     )
 
     signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(
