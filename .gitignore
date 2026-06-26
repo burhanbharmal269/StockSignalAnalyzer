@@ -82,3 +82,12 @@ alembic/versions/__pycache__/
 # Logs
 *.log
 logs/
+
+# One-off utility scripts (not production code)
+check_kite_csv.py
+fetch_nse_fo_list.py
+fix_fo_universe.py
+fix_index_lots.py
+reseed_universe.py
+reset_password.py
+seed_margins.py
