@@ -7,11 +7,13 @@ POST /api/v1/signals/{signal_id}/reject  — manually reject  (RISK_PENDING → 
 """
 
 import uuid
+from typing import Any
 
 from dependency_injector.wiring import Provide, inject
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from container import ApplicationContainer
+from core.application.services.signal_analytics_service import SignalAnalyticsService
 from core.application.services.signal_scanner_service import SignalScannerService
 from core.domain.enums.signal_state import SignalState
 from core.domain.exceptions.signal import SignalStateError
@@ -156,6 +158,24 @@ async def reject_signal(
         ) from exc
     await signal_repository.save(signal)
     return _to_response(signal)
+
+
+@router.get("/{signal_id}/overlay", summary="Overlay decision trace for a signal")
+@inject
+async def get_signal_overlay(
+    signal_id: uuid.UUID,
+    _user: CurrentUser = Depends(require_no_force_change),  # noqa: B008
+    svc: SignalAnalyticsService = Depends(  # noqa: B008
+        Provide[ApplicationContainer.signal_analytics_service]
+    ),
+) -> dict[str, Any]:
+    data = await svc.get_overlay_for_signal(str(signal_id))
+    if data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No analytics record found for this signal.",
+        )
+    return data
 
 
 @router.post("/scan", summary="Trigger a signal scan cycle immediately (admin)")

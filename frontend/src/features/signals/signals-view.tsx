@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSignals, useSignalMutations, useSignalLiveUpdates } from "@/hooks/use-signals";
 import { DataTable } from "@/components/shared/data-table";
+import { DecisionTrace } from "@/components/shared/decision-trace";
 import { formatRelativeTime, cn } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Signal } from "@/types";
@@ -52,6 +53,7 @@ export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
   const [foOnly, setFoOnly] = useState(true);
+  const [traceSignalId, setTraceSignalId] = useState<string | null>(null);
   const { data, isLoading, isError } = useSignals(stateFilter ? { state: stateFilter } : {});
   const { approve, reject } = useSignalMutations();
 
@@ -180,6 +182,28 @@ export function SignalsView() {
       ),
     },
     {
+      id: "trace",
+      header: "",
+      cell: ({ row }) => {
+        const id = row.original.signal_id;
+        const active = traceSignalId === id;
+        return (
+          <button
+            title="Decision trace"
+            onClick={() => setTraceSignalId(active ? null : id)}
+            className={cn(
+              "text-xs px-2 py-1 rounded border font-mono transition-colors",
+              active
+                ? "bg-primary/10 text-primary border-primary/40"
+                : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"
+            )}
+          >
+            {active ? "▲" : "▼"}
+          </button>
+        );
+      },
+    },
+    {
       id: "actions",
       header: "",
       cell: ({ row }) => {
@@ -273,6 +297,26 @@ export function SignalsView() {
               : "No signals"
           }
         />
+      )}
+
+      {traceSignalId && (
+        <div className="rounded-lg border border-border overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2 bg-muted/30 border-b border-border/60">
+            <span className="text-xs font-medium text-muted-foreground">
+              Decision Trace —{" "}
+              <span className="font-mono text-foreground">
+                {signals.find((s) => s.signal_id === traceSignalId)?.symbol ?? traceSignalId.slice(0, 8)}
+              </span>
+            </span>
+            <button
+              onClick={() => setTraceSignalId(null)}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <DecisionTrace signalId={traceSignalId} />
+        </div>
       )}
     </div>
   );

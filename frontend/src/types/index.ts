@@ -117,6 +117,49 @@ export interface SignalListResponse {
   total: number;
 }
 
+// ─── Signal Overlay (Phase 21 Decision Trace) ────────────────────────────────
+
+export interface TraceStep {
+  step: number;
+  name: string;
+  applied: boolean;
+  conf_before: number;
+  adj: number;
+  conf_after: number;
+  size_before: number;
+  size_after: number;
+  severity: string | null;
+  reason: string | null;
+  lock: boolean;
+}
+
+export interface DecisionTrace {
+  version: string;
+  base_confidence: number;
+  overlays: TraceStep[];
+  final_confidence: number;
+  final_size_multiplier: number;
+  execution_grade: string;
+}
+
+export interface SignalOverlay {
+  market_context: string | null;
+  market_context_adj: number | null;
+  event_adj: number | null;
+  regime_stability: string | null;
+  regime_stability_adj: number | null;
+  overlay_adjusted_confidence: number | null;
+  context_size_multiplier: number | null;
+  execution_grade: string | null;
+  decision_trace_json: string | null;
+  decision_version: string | null;
+  overlay_version: string | null;
+  confidence: number | null;
+  adjusted_score: number | null;
+  was_accepted: boolean | null;
+  rejection_reason: string | null;
+}
+
 // ─── Order ───────────────────────────────────────────────────────────────────
 // Matches backend OrderResponse schema
 

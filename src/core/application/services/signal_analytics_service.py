@@ -219,6 +219,59 @@ class SignalAnalyticsService:
             ticker, result.accepted, rejection,
         )
 
+    async def get_overlay_for_signal(self, signal_id: str) -> dict | None:
+        """Fetch the overlay decision trace for a single signal.
+
+        Returns the most recent signal_analytics row for the given signal_id,
+        or None if no analytics record exists yet.
+        """
+        try:
+            async with self._sf() as db:
+                r = await db.execute(
+                    text("""
+                        SELECT
+                            market_context, market_context_adj,
+                            event_adj, event_overlay_json,
+                            regime_stability, regime_stability_adj,
+                            overlay_adjusted_confidence, context_size_multiplier,
+                            execution_grade, decision_trace_json,
+                            decision_version, overlay_version,
+                            confidence, adjusted_score,
+                            was_accepted, rejection_reason
+                        FROM signal_analytics
+                        WHERE signal_id = :sid
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    """),
+                    {"sid": signal_id},
+                )
+                row = r.fetchone()
+        except Exception as exc:
+            _log.warning("signal_analytics.get_overlay_failed signal_id=%s: %s", signal_id, exc)
+            return None
+
+        if row is None:
+            return None
+
+        return {
+            "market_context":              row[0],
+            "market_context_adj":          float(row[1])  if row[1]  is not None else None,
+            "event_adj":                   float(row[2])  if row[2]  is not None else None,
+            "event_overlay_json":          row[3],
+            "regime_stability":            row[4],
+            "regime_stability_adj":        float(row[5])  if row[5]  is not None else None,
+            "overlay_adjusted_confidence": float(row[6])  if row[6]  is not None else None,
+            "context_size_multiplier":     float(row[7])  if row[7]  is not None else None,
+            "execution_grade":             row[8],
+            "decision_trace_json":         row[9],
+            "decision_version":            row[10],
+            "overlay_version":             row[11],
+            "confidence":                  float(row[12]) if row[12] is not None else None,
+            "adjusted_score":              float(row[13]) if row[13] is not None else None,
+            "was_accepted":                bool(row[14])  if row[14] is not None else None,
+            "rejection_reason":            row[15],
+        }
+
     async def update_outcome(
         self,
         analytics_id: int,

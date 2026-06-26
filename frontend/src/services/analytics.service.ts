@@ -1,4 +1,5 @@
 import apiClient from "@/lib/api-client";
+import type { SignalOverlay } from "@/types";
 
 export interface ExecutionSummary {
   symbol: string | null;
@@ -56,5 +57,10 @@ export const analyticsService = {
   getPaperTradingReports: (periodType: "DAILY" | "WEEKLY" | "MONTHLY" = "DAILY") =>
     apiClient
       .get<PaperTradingReportsResponse>(`/paper-trading/reports/${periodType}`)
+      .then((r) => r.data),
+
+  getSignalOverlay: (signalId: string) =>
+    apiClient
+      .get<SignalOverlay>(`/signals/${signalId}/overlay`)
       .then((r) => r.data),
 };
