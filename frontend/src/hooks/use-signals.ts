@@ -55,6 +55,6 @@ export function useSignalLiveUpdates() {
     [qc]
   );
 
-  useWebSocket<Signal>("signal.new", handler);
+  useWebSocket<Signal>("signal.created", handler);
   useWebSocket<Signal>("signal.updated", handler);
 }

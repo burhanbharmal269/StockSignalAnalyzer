@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from decimal import Decimal
 from uuid import UUID
 
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -22,6 +25,15 @@ from core.domain.value_objects.confidence import Confidence
 from core.domain.value_objects.score import Score
 from core.domain.value_objects.symbol import Symbol
 from core.infrastructure.database.models.signal_models import SignalOrm
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+_log = logging.getLogger(__name__)
+
+_CH_CREATED = "ssa:signal.created"
+_CH_UPDATED = "ssa:signal.updated"
+_STREAM_MAXLEN = 200
 
 _TERMINAL_STATES = {
     SignalState.EXECUTED,
@@ -119,13 +131,20 @@ async def _attach_prices(session: AsyncSession, signals: list[Signal]) -> None:
 
 
 class SqlAlchemySignalRepository(ISignalRepository):
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        redis_client: "Redis | None" = None,
+    ) -> None:
         self._session_factory = session_factory
+        self._redis = redis_client
 
     async def save(self, signal: Signal) -> None:
+        is_new: bool = False
         async with self._session_factory() as session:
             existing = await session.get(SignalOrm, signal.signal_id)
             if existing is None:
+                is_new = True
                 session.add(_to_orm(signal))
             else:
                 orm = _to_orm(signal)
@@ -141,6 +160,32 @@ class SqlAlchemySignalRepository(ISignalRepository):
                 existing.portfolio_id = orm.portfolio_id
                 existing.capital_source_mode = orm.capital_source_mode
             await session.commit()
+
+        await self._broadcast(signal, is_new=is_new)
+
+    async def _broadcast(self, signal: Signal, *, is_new: bool) -> None:
+        """Publish a minimal signal payload to Redis Pub/Sub + Stream for WS gateway."""
+        if self._redis is None:
+            return
+        channel = _CH_CREATED if is_new else _CH_UPDATED
+        payload = json.dumps({
+            "signal_id":     str(signal.signal_id),
+            "symbol":        signal.symbol.ticker,
+            "exchange":      signal.symbol.exchange,
+            "state":         signal.state.value,
+            "signal_type":   signal.signal_type.value,
+            "strategy_type": signal.strategy_type.value,
+            "regime":        signal.regime.value,
+            "confidence":    signal.confidence.value if signal.confidence else None,
+            "adjusted_score": signal.adjusted_score.value if signal.adjusted_score else None,
+        })
+        try:
+            # Pub/Sub — live push to connected WebSocket clients
+            await self._redis.publish(channel, payload)
+            # Stream — replay buffer for clients that reconnect (ws_router._replay_recent_events)
+            await self._redis.xadd(channel, {"data": payload}, maxlen=_STREAM_MAXLEN, approximate=True)
+        except Exception:
+            _log.warning("signal_repository.broadcast_failed signal_id=%s channel=%s", signal.signal_id, channel, exc_info=True)
 
     async def get_by_id(self, signal_id: UUID) -> Signal | None:
         async with self._session_factory() as session:

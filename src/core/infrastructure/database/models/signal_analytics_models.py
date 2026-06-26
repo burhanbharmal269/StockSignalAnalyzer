@@ -14,17 +14,19 @@ Enables:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     Index,
     Integer,
     Numeric,
     String,
+    Text,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -111,11 +113,28 @@ class SignalAnalyticsOrm(Base):
     # Option contract recommendation (from signal_analytics migration 20260618_1000)
     option_type: Mapped[str | None] = mapped_column(String(2), nullable=True)
     option_strike: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    option_expiry: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    option_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
     option_symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)
     option_entry: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     option_sl: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     option_target: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+
+    # Phase 21.1 — context overlay attribution (added migration 20260626_1000)
+    market_context: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    market_context_adj: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    event_adj: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    event_overlay_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    regime_stability: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    regime_stability_adj: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    confidence_attribution_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    context_size_multiplier: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
+    overlay_adjusted_confidence: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    execution_grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
+    # Phase 21.2 — decision trace + versions (added migration 20260626_1100)
+    decision_trace_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    overlay_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True

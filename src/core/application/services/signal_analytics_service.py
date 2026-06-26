@@ -72,7 +72,7 @@ class SignalAnalyticsService:
                 overlay=overlay,
             )
         except Exception as exc:
-            _log.warning("signal_analytics.record_failed symbol=%s: %s", symbol_name, exc)
+            _log.warning("signal_analytics.record_failed symbol=%s: %s", symbol_name, exc, exc_info=True)
 
     async def _insert(
         self,
@@ -107,7 +107,7 @@ class SignalAnalyticsService:
             "lot_size": int(request.lot_size) if request else 1,
             "dte": int(request.dte) if request else None,
 
-            "raw_score": None,
+            "raw_score": round(bd.total_before_penalties, 2) if bd else None,
             "adjusted_score": result.adjusted_score,
             "confidence": result.final_confidence,
 
