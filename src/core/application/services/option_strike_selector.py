@@ -50,11 +50,12 @@ _DEFAULT_TARGET_B     = 0.28
 _MIN_LTP              = 4.0    # ignore strikes below ₹4: ATM 8-DTE options trade at ~2-3% of underlying, so ₹200+ stocks can have ~₹4-6 ATM premiums
 _MIN_LTP_PCT          = 0.004  # also reject if premium < 0.4% of underlying (catches very low-priced stocks)
 _MAX_LTP_PCT          = 0.030  # reject if premium > 3% of underlying (overpaying for IV)
-_MIN_OI_FLOOR         = 300    # minimum OI for liquid contract
+_MIN_OI_FLOOR         = 500    # raised 300→500: tighter liquidity gate; sub-500 OI = wide spreads, poor fills
 _MAX_STRIKE_SPREAD    = 2      # evaluate ATM ± this many strikes for ranking
 _MIN_SL_BUFFER        = 1.0    # minimum ₹ gap between entry and SL; 25% of ₹4 option = ₹1.00 buffer — adequate for NSE tick size
 _LATE_SESSION_START   = _dtime(13, 30)   # after this, reduce target to 35% — < 2 hours to close
 _LATE_TARGET_CAP      = 0.35             # cap on target_pct after 13:30 IST
+_LATE_SL_CAP          = 0.17            # matching SL cap: 35% target / 17% SL ≈ 2.1:1 R:R (maintains design minimum)
 
 
 @dataclass(frozen=True)
@@ -132,10 +133,21 @@ class OptionStrikeSelector:
 
         # Grade A/B sizing from config (Phase 5)
         sl_pct, target_pct = self._grade_sizing(adjusted_score, intraday_risk_cfg)
-        sl     = round(entry * (1 - sl_pct), 2)
 
-        # Reject contracts where SL absolute buffer is < ₹2: the bid-ask spread
-        # on a ₹4 option can be ₹0.25-0.50; a 25% SL = only ₹1 below entry
+        # Time-based target + SL cap: signals after 13:30 IST have < 2 hours to
+        # market close. Cap target at 35% AND tighten SL to maintain ≥2:1 R:R.
+        # Without the SL cap, Grade A gives 35%/25% = 1.4:1 R:R — below design floor.
+        # 35% target / 17% SL ≈ 2.1:1 — preserves minimum design R:R in late session.
+        _now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).time()
+        if _now_ist >= _LATE_SESSION_START and target_pct > _LATE_TARGET_CAP:
+            target_pct = _LATE_TARGET_CAP
+            if sl_pct > _LATE_SL_CAP:
+                sl_pct = _LATE_SL_CAP
+
+        sl = round(entry * (1 - sl_pct), 2)
+
+        # Reject contracts where SL absolute buffer is too tight: the bid-ask spread
+        # on a ₹4 option can be ₹0.25-0.50; a 17-25% SL on a ₹4 option = ₹0.68-1.00
         # — market makers will trigger it without any real adverse move.
         if (entry - sl) < _MIN_SL_BUFFER:
             _log.debug(
@@ -143,14 +155,6 @@ class OptionStrikeSelector:
                 strike_entry.get("underlying", "?"), entry, sl, entry - sl, _MIN_SL_BUFFER,
             )
             return None
-
-        # Time-based target reduction: signals after 13:30 IST have < 2 hours to
-        # market close. A 55% option target needs ~1.5-2% underlying move — not
-        # achievable in under 2 hours for most stocks. Cap at 35% so published
-        # targets remain realistic and signal outcome stats stay meaningful.
-        _now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).time()
-        if _now_ist >= _LATE_SESSION_START and target_pct > _LATE_TARGET_CAP:
-            target_pct = _LATE_TARGET_CAP
 
         target = round(entry * (1 + target_pct), 2)
 

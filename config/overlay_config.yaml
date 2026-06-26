@@ -1,0 +1,72 @@
+# Phase 21.2 — Overlay Pipeline Configuration
+#
+# Every overlay can be independently enabled, disabled, or set to logging_only.
+# logging_only=true  → overlay is computed and recorded in the decision trace
+#                      but its adjustments are NOT applied to confidence or size.
+# enabled=false      → overlay is skipped entirely (not recorded in trace).
+#
+# Confidence adjustments are additive.  Size adjustments are multiplicative.
+# The pipeline applies overlays sequentially; running values carry forward.
+#
+# Versions are stored with every signal for full audit trail reproducibility.
+# Increment overlay_version when ANY overlay threshold or weight changes.
+# Increment decision_version when the pipeline logic itself changes.
+
+decision_version: "21.2"
+overlay_version:  "1.0"
+
+overlays:
+
+  market_context:
+    enabled: true
+    logging_only: false
+    # Confidence adjustments come from MarketContextSnapshot (config/market_context.yaml)
+    # Size multipliers:  NORMAL=1.0  CAUTION=0.75  HIGH_RISK=0.50  PANIC=0.0
+
+  event:
+    enabled: true
+    logging_only: false
+    # Confidence adjustments come from EventCalendarService (config/events.yaml)
+    # LOW events → 0 adj (recorded but not applied)
+
+  regime_stability:
+    enabled: true
+    logging_only: false
+    stable_adj:     0.0
+    transition_adj: -3.0
+    unstable_adj:   -5.0
+
+  portfolio_heat:
+    enabled: true
+    logging_only: false          # soft overlay (informational + confidence adj)
+    # Hard gate (100% heat → block order entirely) lives in PipelineEventHandler
+    warning_threshold_pct:  70.0
+    warning_adj:            -2.0
+    elevated_threshold_pct: 85.0
+    elevated_adj:           -5.0
+
+  portfolio_correlation:
+    enabled: true
+    logging_only: false
+    high_rho_threshold:   0.70   # |ρ| ≥ this → HIGH_CORRELATION
+    adj_per_pair:         -3.0
+    max_adj:              -7.0   # cap on total correlation penalty
+
+  sector_exposure:
+    enabled: true
+    logging_only: false
+    warning_threshold_pct:  40.0
+    warning_adj:            -2.0
+    critical_threshold_pct: 60.0
+    critical_adj:           -5.0
+
+  execution_quality:
+    enabled: true
+    logging_only: false
+    # Grade criteria and adjustments
+    grade_a_min_confidence: 75.0
+    grade_d_max_confidence: 55.0
+    grade_a_adj:  2.0
+    grade_b_adj:  0.0
+    grade_c_adj: -3.0
+    grade_d_adj: -7.0

@@ -1,0 +1,51 @@
+version: "1.0"
+
+# MarketContextEngine thresholds — Phase 21.1 §1
+# Scoring: points are accumulated from all conditions; highest-triggered VIX
+# and breadth tiers are used (not cumulative within a tier group).
+#
+# Final level:
+#   0 points  → NORMAL
+#   1-2 pts   → CAUTION  (confidence -3, size 75%)
+#   3-4 pts   → HIGH_RISK (confidence -7, size 50%)
+#   5+ pts    → PANIC    (confidence -12, size 0 / manual)
+
+vix:
+  caution_threshold:   16.0   # VIX ≥ 16 → +1 pt
+  high_risk_threshold: 20.0   # VIX ≥ 20 → +2 pts (replaces +1)
+  panic_threshold:     25.0   # VIX ≥ 25 → +4 pts (replaces lower tiers)
+  rising_bonus:         1     # +1 if VIX is rising (latest > 3-bar avg)
+  vix_history_bars:     3     # bars to use for VIX direction detection
+
+regimes:
+  nifty_high_vol_pts:       1   # NIFTY in HIGH_VOLATILITY  → +1 pt
+  nifty_bearish_pts:        2   # NIFTY in TRENDING_BEARISH → +2 pts
+  bnf_volatile_pts:         1   # BNF  in HIGH_VOL or BEARISH → +1 pt
+  finnifty_volatile_pts:    1   # FINNIFTY in HIGH_VOL or BEARISH → +1 pt (optional)
+  all_indices_volatile_pts: 1   # all 3 indices volatile simultaneously → +1 extra
+
+breadth:
+  caution_adr:   0.90   # ADR < 0.90  → +1 pt  (advance/decline ratio)
+  high_risk_adr: 0.70   # ADR < 0.70  → +2 pts (replaces +1)
+  panic_adr:     0.50   # ADR < 0.50  → +3 pts (replaces lower tiers)
+
+level_thresholds:
+  normal_max:    0
+  caution_max:   2
+  high_risk_max: 4
+  # 5+            → PANIC
+
+# Overlays applied to signals (mirrors MarketContextSnapshot constants)
+overlays:
+  NORMAL:
+    confidence_adj: 0.0
+    size_multiplier: 1.00
+  CAUTION:
+    confidence_adj: -3.0
+    size_multiplier: 0.75
+  HIGH_RISK:
+    confidence_adj: -7.0
+    size_multiplier: 0.50
+  PANIC:
+    confidence_adj: -12.0
+    size_multiplier: 0.00

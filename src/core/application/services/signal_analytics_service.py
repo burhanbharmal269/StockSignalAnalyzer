@@ -13,6 +13,7 @@ Used by:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
@@ -59,6 +60,7 @@ class SignalAnalyticsService:
         result: "SignalResult",
         features: dict,
         option_play: "OptionPlay | None" = None,
+        overlay: "dict | None" = None,
     ) -> None:
         """Record one scanner result to signal_analytics. Never raises — fail-open."""
         try:
@@ -67,6 +69,7 @@ class SignalAnalyticsService:
                 symbol_name, exchange, is_index, sector,
                 request, result, features, execution_mode,
                 option_play=option_play,
+                overlay=overlay,
             )
         except Exception as exc:
             _log.warning("signal_analytics.record_failed symbol=%s: %s", symbol_name, exc)
@@ -82,6 +85,7 @@ class SignalAnalyticsService:
         features: dict,
         execution_mode: str = "MANUAL",
         option_play: "OptionPlay | None" = None,
+        overlay: "dict | None" = None,
     ) -> None:
         bd = result.score_breakdown
         rejection = result.rejection_reason.value if result.rejection_reason else None
@@ -143,6 +147,24 @@ class SignalAnalyticsService:
             "option_entry":  option_play.entry          if option_play else None,
             "option_sl":     option_play.sl             if option_play else None,
             "option_target": option_play.target         if option_play else None,
+
+            # Phase 21.1 — context overlay attribution (all nullable)
+            "market_context":              overlay.get("market_context")       if overlay else None,
+            "market_context_adj":          overlay.get("market_context_adj")   if overlay else None,
+            "event_adj":                   overlay.get("event_adj")            if overlay else None,
+            "event_overlay_json":          overlay.get("event_overlay_json")   if overlay else None,
+            "regime_stability":            overlay.get("regime_stability")     if overlay else None,
+            "regime_stability_adj":        overlay.get("regime_stability_adj") if overlay else None,
+            "confidence_attribution_json": (
+                json.dumps(overlay) if overlay else None
+            ),
+            "context_size_multiplier":     overlay.get("size_multiplier")     if overlay else None,
+            "overlay_adjusted_confidence": overlay.get("overlay_confidence")  if overlay else None,
+            "execution_grade":             overlay.get("execution_grade")      if overlay else None,
+            # Phase 21.2 — decision trace + versions
+            "decision_trace_json":         overlay.get("decision_trace_json") if overlay else None,
+            "decision_version":            overlay.get("decision_version")    if overlay else None,
+            "overlay_version":             overlay.get("overlay_version")     if overlay else None,
         }
 
         async with self._sf() as db:
@@ -160,7 +182,13 @@ class SignalAnalyticsService:
                         data_quality_score, missing_sources,
                         was_accepted, rejection_reason,
                         option_type, option_strike, option_expiry, option_symbol,
-                        option_entry, option_sl, option_target
+                        option_entry, option_sl, option_target,
+                        market_context, market_context_adj, event_adj, event_overlay_json,
+                        regime_stability, regime_stability_adj,
+                        confidence_attribution_json,
+                        context_size_multiplier, overlay_adjusted_confidence,
+                        execution_grade,
+                        decision_trace_json, decision_version, overlay_version
                     ) VALUES (
                         :signal_id, :ticker, :exchange, :direction, :strategy_type, :regime,
                         :sector, :is_index, :execution_mode,
@@ -173,7 +201,13 @@ class SignalAnalyticsService:
                         :data_quality_score, :missing_sources,
                         :was_accepted, :rejection_reason,
                         :option_type, :option_strike, :option_expiry, :option_symbol,
-                        :option_entry, :option_sl, :option_target
+                        :option_entry, :option_sl, :option_target,
+                        :market_context, :market_context_adj, :event_adj, :event_overlay_json,
+                        :regime_stability, :regime_stability_adj,
+                        :confidence_attribution_json,
+                        :context_size_multiplier, :overlay_adjusted_confidence,
+                        :execution_grade,
+                        :decision_trace_json, :decision_version, :overlay_version
                     )
                 """),
                 params,

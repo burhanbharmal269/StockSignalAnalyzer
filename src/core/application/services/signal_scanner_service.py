@@ -16,20 +16,31 @@ Phase 4 — Runtime Tracing:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import random
 from datetime import UTC, date, datetime, time as _dtime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+# Runtime imports (used in hot path — import once at module load, not per call)
+from core.domain.value_objects.overlay_result import OverlayContext, PortfolioContext
+
 if TYPE_CHECKING:
     from core.application.services.data_quality_service import DataQualityService
+    from core.application.services.event_calendar_service import EventCalendarService
+    from core.application.services.execution_lock_service import ExecutionLockService
+    from core.application.services.market_breadth_service import MarketBreadthService
+    from core.application.services.market_context_engine import MarketContextEngine
     from core.application.services.market_data.historical_data_service import HistoricalDataService
     from core.application.services.market_universe_service import MarketUniverseService
     from core.application.services.option_chain_service import OptionChainService
+    from core.application.services.overlay_pipeline import OverlayPipeline
+    from core.application.services.portfolio_intelligence_service import PortfolioIntelligenceService
     from core.application.services.risk_manager_service import RiskManagerService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
     from core.application.services.signal_engine_service import SignalEngineService
+    from core.domain.value_objects.market_context_snapshot import MarketContextSnapshot
     from core.infrastructure.config.signal_config import SignalConfig
 
 _log = logging.getLogger(__name__)
@@ -86,13 +97,18 @@ def _is_market_hours() -> bool:
 
 
 def _next_monthly_expiry() -> date:
-    """Return the last Thursday of the current or next month (NSE F&O expiry)."""
+    """Return the last Tuesday of the current or next month (NSE F&O expiry).
+
+    NSE moved all derivatives expiry from Thursday to Tuesday effective
+    1 September 2025 (SEBI circular). Monthly expiry = last Tuesday of month
+    for ALL instruments (indices and stocks).
+    """
     today = _ist_now().date()
     for month_offset in range(3):
         year = today.year + (today.month + month_offset - 1) // 12
         month = (today.month + month_offset - 1) % 12 + 1
         last_day = date(year, month, 28)
-        while last_day.weekday() != 3:  # 3 = Thursday
+        while last_day.weekday() != 1:  # 1 = Tuesday (Mon=0, Tue=1, ...)
             last_day += timedelta(days=1)
         candidate = last_day
         while True:
@@ -103,6 +119,20 @@ def _next_monthly_expiry() -> date:
         if candidate >= today:
             return candidate
     return today + timedelta(days=30)
+
+
+def _next_nifty_weekly_expiry() -> date:
+    """Return the nearest Tuesday (NIFTY50 weekly option expiry).
+
+    Since Sep 2025, NIFTY50 is the only NSE index with weekly options.
+    They expire every Tuesday. BANKNIFTY/FINNIFTY/MIDCPNIFTY have
+    monthly-only options (last Tuesday of month) — use _next_monthly_expiry().
+    """
+    today = _ist_now().date()
+    days_ahead = (1 - today.weekday()) % 7  # days until next Tuesday
+    if days_ahead == 0:
+        return today  # today IS Tuesday = expiry day
+    return today + timedelta(days=days_ahead)
 
 
 def _compute_features(candles) -> dict:
@@ -465,8 +495,12 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
     stop  = entry - atr_d * Decimal("1.5")
     tgt   = entry + atr_d * Decimal("3.0")
 
-    expiry = _next_monthly_expiry()
-    dte    = max((expiry - _ist_now().date()).days, 1)
+    # NIFTY has weekly options every Tuesday; everything else monthly (last Tuesday).
+    if is_index and symbol == "NIFTY":
+        expiry = _next_nifty_weekly_expiry()
+    else:
+        expiry = _next_monthly_expiry()
+    dte = max((expiry - _ist_now().date()).days, 1)
 
     # Scoring engine uses detailed InstrumentClass for performance stats lookup
     score_instrument_class = InstrumentClass.INDEX_FUTURE if is_index else InstrumentClass.STOCK_FUTURE
@@ -569,6 +603,12 @@ class SignalScannerService:
         option_chain_svc: "OptionChainService | None" = None,
         signal_config: "SignalConfig | None" = None,
         risk_manager: "RiskManagerService | None" = None,
+        market_context_engine: "MarketContextEngine | None" = None,
+        event_calendar_svc: "EventCalendarService | None" = None,
+        breadth_svc: "MarketBreadthService | None" = None,
+        execution_lock_svc: "ExecutionLockService | None" = None,
+        overlay_pipeline: "OverlayPipeline | None" = None,
+        portfolio_svc: "PortfolioIntelligenceService | None" = None,
     ) -> None:
         from core.application.services.data_quality_service import DataQualityService
         from core.application.services.option_strike_selector import OptionStrikeSelector
@@ -579,6 +619,12 @@ class SignalScannerService:
         self._option_chain    = option_chain_svc
         self._signal_config   = signal_config
         self._risk_manager    = risk_manager
+        self._mce             = market_context_engine
+        self._event_svc       = event_calendar_svc
+        self._breadth_svc     = breadth_svc
+        self._exec_lock_svc   = execution_lock_svc
+        self._overlay_pipeline = overlay_pipeline
+        self._portfolio_svc    = portfolio_svc
         self._dq_service      = DataQualityService()
         self._strike_selector = OptionStrikeSelector()
         self._running         = False
@@ -590,6 +636,15 @@ class SignalScannerService:
         self._vwap_touch_count: dict[str, int] = {}
         self._vwap_last_sigma_sign: dict[str, int] = {}  # +1 or -1
         self._vwap_touch_date: dict[str, date] = {}
+        # Phase 21.1 — market context + event overlay state
+        # Index regime cache: updated each cycle, used for NEXT cycle's context computation.
+        self._index_regime_cache: dict[str, str] = {}
+        # VIX history (last 10 readings) for direction detection.
+        self._vix_history: list[float] = []
+        # Per-symbol regime history (last 5 cycles) for stability overlay.
+        self._regime_history: dict[str, list[str]] = {}
+        # Last computed market context snapshot (default: NORMAL).
+        self._market_ctx: "MarketContextSnapshot | None" = None
 
     # ------------------------------------------------------------------
     # Background loop
@@ -661,6 +716,42 @@ class SignalScannerService:
         if india_vix is not None:
             _log.info("signal_scanner.india_vix vix=%.2f", india_vix)
 
+        # ── Phase 21.1: Market Context + Event Calendar ───────────────────────
+        # Compute from last cycle's index regime cache + current VIX + breadth.
+        # First cycle uses NORMAL (safe default). Cache updated at end of each cycle.
+        market_ctx = await self._compute_market_context(india_vix)
+        self._market_ctx = market_ctx
+
+        # Seed upcoming NSE expiry events (idempotent upsert, fast).
+        if self._event_svc:
+            try:
+                await self._event_svc.seed_nse_expiry_events()
+            except Exception as _seed_exc:
+                _log.debug("signal_scanner.event_seed_failed: %s", _seed_exc)
+
+        # Pre-fetch event cache once per cycle (1 DB query for all 253 symbols).
+        event_cache: dict = {}
+        if self._event_svc:
+            try:
+                event_cache = await self._event_svc.get_global_event_cache(_ist_now())
+            except Exception as _ec_exc:
+                _log.warning(
+                    "signal_scanner.event_cache_failed — event overlays disabled this cycle: %s",
+                    _ec_exc,
+                )
+
+        # Phase 21.2: Pre-fetch portfolio context once per cycle for overlay pipeline.
+        portfolio_ctx: "PortfolioContext | None" = None
+        if self._portfolio_svc:
+            try:
+                portfolio_ctx = await self._portfolio_svc.get_scanner_portfolio_context()
+            except Exception as _pc_exc:
+                _log.warning(
+                    "signal_scanner.portfolio_ctx_failed — heat/correlation/sector overlays "
+                    "disabled this cycle: %s",
+                    _pc_exc,
+                )
+
         # ── TRACE 1: Universe load ────────────────────────────────────
         # get_active_symbols(fo_only=True) returns BOTH index futures (is_fo=True,
         # is_index=True) AND F&O stocks (is_fo=True, is_index=False)
@@ -699,7 +790,10 @@ class SignalScannerService:
             "stale_candles",
         })
         results  = await asyncio.gather(
-            *[self._process_symbol_sem(sym, semaphore, india_vix) for sym in candidates],
+            *[
+                self._process_symbol_sem(sym, semaphore, india_vix, market_ctx, event_cache, portfolio_ctx)
+                for sym in candidates
+            ],
             return_exceptions=True,
         )
         for res in results:
@@ -731,11 +825,29 @@ class SignalScannerService:
             "candidates": len(candidates),
         }
 
-    async def _process_symbol_sem(self, sym, semaphore: asyncio.Semaphore, india_vix: float | None = None) -> str:
+    async def _process_symbol_sem(
+        self,
+        sym,
+        semaphore: asyncio.Semaphore,
+        india_vix: float | None = None,
+        market_ctx: "MarketContextSnapshot | None" = None,
+        event_cache: dict | None = None,
+        portfolio_ctx: "PortfolioContext | None" = None,
+    ) -> str:
         async with semaphore:
-            return await self._process_symbol(sym, india_vix=india_vix)
+            return await self._process_symbol(
+                sym, india_vix=india_vix, market_ctx=market_ctx,
+                event_cache=event_cache or {}, portfolio_ctx=portfolio_ctx,
+            )
 
-    async def _process_symbol(self, sym, india_vix: float | None = None) -> str:
+    async def _process_symbol(
+        self,
+        sym,
+        india_vix: float | None = None,
+        market_ctx: "MarketContextSnapshot | None" = None,
+        event_cache: dict | None = None,
+        portfolio_ctx: "PortfolioContext | None" = None,
+    ) -> str:
         """Process one universe symbol through the full pipeline. Returns 'accepted'/'rejected'/'error'."""
         symbol   = sym.symbol
         sym_type = "INDEX" if sym.is_index else "STOCK"
@@ -1142,6 +1254,15 @@ class SignalScannerService:
                     return "obv_against_trend"
 
         # ── TRACE 6b: Option contract selection ───────────────────────────
+        # Warn when an accepted signal has no option chain snapshot — OI wall gate
+        # was skipped, which means the signal passed without wall clearance validation.
+        if result.accepted and oc_snap is None:
+            _log.warning(
+                "signal_scanner.no_oc_snapshot symbol=%s direction=%s score=%.1f "
+                "— OI wall + GEX checks skipped; proceeding on technicals only",
+                symbol, result.direction, result.adjusted_score or 0.0,
+            )
+
         option_play = None
         if result.accepted and result.direction in ("LONG", "SHORT") and self._option_chain is not None:
             try:
@@ -1241,6 +1362,47 @@ class SignalScannerService:
             )
             return "no_contract"
 
+        # ── Phase 21.2: Unified Overlay Pipeline ────────────────────────────────
+        # Runs AFTER all gates; only builds attribution, never rejects signals.
+        # Index regime cache updated here so the NEXT cycle's market context
+        # computation uses current index regimes (one-cycle lag prevents whipsaw).
+        if sym.is_index:
+            self._index_regime_cache[symbol] = str(regime)
+
+        # Regime history READ before append (pipeline uses pre-append state).
+        _regime_hist_snapshot = list(self._regime_history.get(symbol, []))
+
+        _pctx = portfolio_ctx if portfolio_ctx is not None else PortfolioContext.empty()
+        _ov_ctx = OverlayContext(
+            symbol=symbol,
+            is_index=sym.is_index,
+            regime=str(regime),
+            direction=result.direction or "NEUTRAL",
+            engine_confidence=result.final_confidence or 0.0,
+            engine_score=result.adjusted_score or 0.0,
+            market_ctx=market_ctx,
+            event_cache=event_cache or {},
+            regime_history=_regime_hist_snapshot,
+            ist_time=_now_ist,
+            sector=getattr(sym, "sector", None),
+            portfolio=_pctx,
+        )
+
+        # Lazy-create pipeline if not wired (safe default for backward compat).
+        _pipeline = self._overlay_pipeline
+        if _pipeline is None:
+            from core.application.services.overlay_pipeline import OverlayPipeline
+            _pipeline = OverlayPipeline()
+
+        _ov_result = _pipeline.run(_ov_ctx)
+        attribution: dict = _ov_result.attribution
+
+        # Update regime history AFTER pipeline has read the pre-append snapshot.
+        _hist = self._regime_history.setdefault(symbol, [])
+        _hist.append(str(regime))
+        if len(_hist) > 5:
+            _hist.pop(0)
+
         # ── TRACE 7: Signal analytics — always record (execution-mode independent) ──
         if self._analytics is not None:
             await self._analytics.record(
@@ -1252,6 +1414,7 @@ class SignalScannerService:
                 result=result,
                 features=features,
                 option_play=option_play,
+                overlay=attribution,
             )
 
         if result.accepted:
@@ -1291,6 +1454,66 @@ class SignalScannerService:
         except Exception as exc:
             _log.debug("india_vix fetch failed: %s", exc)
         return None
+
+    # ------------------------------------------------------------------
+    # Phase 21.1 helpers — market context + regime stability overlay
+    # ------------------------------------------------------------------
+
+    async def _compute_market_context(
+        self, india_vix: float | None
+    ) -> "MarketContextSnapshot":
+        """Compute market context using last cycle's index regime cache + VIX + breadth."""
+        from core.domain.value_objects.market_context_snapshot import MarketContextSnapshot
+
+        # Always update VIX history regardless of whether MCE is wired,
+        # so _is_vix_rising() returns correct results even when MCE is absent.
+        if india_vix is not None:
+            self._vix_history.append(india_vix)
+            if len(self._vix_history) > 10:
+                self._vix_history.pop(0)
+
+        if self._mce is None:
+            return MarketContextSnapshot.normal()
+
+        breadth = None
+        if self._breadth_svc:
+            try:
+                breadth = await self._breadth_svc.get_latest()
+            except Exception:
+                pass
+
+        try:
+            snap = await self._mce.compute(
+                index_regimes=self._index_regime_cache.copy(),
+                vix=india_vix,
+                vix_rising=self._is_vix_rising(india_vix),
+                breadth=breadth,
+            )
+        except Exception as exc:
+            _log.warning("signal_scanner.market_context_failed: %s", exc)
+            return MarketContextSnapshot.normal()
+
+        # PANIC → auto execution paused; operator must re-enable manually.
+        if snap.level == "PANIC" and self._exec_lock_svc:
+            try:
+                state = await self._exec_lock_svc.get_state()
+                if state.execution_mode != "MANUAL":
+                    await self._exec_lock_svc.set_execution_mode("MANUAL", "market_context_engine")
+                    _log.critical(
+                        "signal_scanner.PANIC_MODE — auto execution paused "
+                        "(VIX/regime/breadth): %s", snap.reason
+                    )
+            except Exception:
+                _log.warning("signal_scanner.panic_lock_failed")
+
+        return snap
+
+    def _is_vix_rising(self, vix: float | None) -> bool:
+        """Return True when current VIX is above the rolling average of last 3 readings."""
+        if vix is None or len(self._vix_history) < 2:
+            return False
+        recent = self._vix_history[-3:]
+        return vix > (sum(recent) / len(recent))
 
     async def _fetch_option_chain_snapshot(
         self, symbol: str, close_price: float

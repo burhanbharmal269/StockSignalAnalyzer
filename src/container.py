@@ -906,6 +906,14 @@ class ApplicationContainer(containers.DeclarativeContainer):
 
     # --- Pipeline event handler -----------------------------------------------
 
+    portfolio_intelligence_service = providers.Singleton(
+        __import__(
+            "core.application.services.portfolio_intelligence_service",
+            fromlist=["PortfolioIntelligenceService"],
+        ).PortfolioIntelligenceService,
+        session_factory=db_session_factory,
+    )
+
     pipeline_event_handler: providers.Singleton[PipelineEventHandler] = providers.Singleton(
         PipelineEventHandler,
         order_management_service=order_management_service,
@@ -915,6 +923,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         exit_manager_service=exit_manager_service,
         position_repository=position_repository,
         execution_lock_service=execution_lock_service,
+        portfolio_intelligence_svc=portfolio_intelligence_service,
     )
 
     # -------------------------------------------------------------------------
@@ -1277,6 +1286,49 @@ class ApplicationContainer(containers.DeclarativeContainer):
         session_factory=db_session_factory,
     )
 
+    market_breadth_service = providers.Singleton(
+        __import__(
+            "core.application.services.market_breadth_service",
+            fromlist=["MarketBreadthService"],
+        ).MarketBreadthService,
+        universe_repo=market_universe_repository,
+        candle_repo=historical_candle_repository,
+        live_feed=live_feed_service,
+        session_factory=db_session_factory,
+    )
+
+    # Phase 21.1 — Market Context Engine + Event Calendar Service
+    market_context_engine = providers.Singleton(
+        __import__(
+            "core.application.services.market_context_engine",
+            fromlist=["MarketContextEngine"],
+        ).MarketContextEngine,
+        session_factory=db_session_factory,
+    )
+
+    event_calendar_service = providers.Singleton(
+        __import__(
+            "core.application.services.event_calendar_service",
+            fromlist=["EventCalendarService"],
+        ).EventCalendarService,
+        session_factory=db_session_factory,
+    )
+
+    overlay_pipeline = providers.Singleton(
+        __import__(
+            "core.application.services.overlay_pipeline",
+            fromlist=["OverlayPipeline"],
+        ).OverlayPipeline,
+    )
+
+    overlay_effectiveness_service = providers.Singleton(
+        __import__(
+            "core.application.services.overlay_effectiveness_service",
+            fromlist=["OverlayEffectivenessService"],
+        ).OverlayEffectivenessService,
+        session_factory=db_session_factory,
+    )
+
     signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(
         SignalScannerService,
         universe_svc=market_universe_service,
@@ -1285,6 +1337,12 @@ class ApplicationContainer(containers.DeclarativeContainer):
         analytics_svc=signal_analytics_service,
         option_chain_svc=option_chain_service,
         signal_config=signal_config,
+        market_context_engine=market_context_engine,
+        event_calendar_svc=event_calendar_service,
+        breadth_svc=market_breadth_service,
+        execution_lock_svc=execution_lock_service,
+        overlay_pipeline=overlay_pipeline,
+        portfolio_svc=portfolio_intelligence_service,
     )
 
     market_close_exit_service: providers.Singleton[MarketCloseExitService] = providers.Singleton(
@@ -1318,17 +1376,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ).SentimentService,
         session_factory=db_session_factory,
         ai_config=ai_config,
-    )
-
-    market_breadth_service = providers.Singleton(
-        __import__(
-            "core.application.services.market_breadth_service",
-            fromlist=["MarketBreadthService"],
-        ).MarketBreadthService,
-        universe_repo=market_universe_repository,
-        candle_repo=historical_candle_repository,
-        live_feed=live_feed_service,
-        session_factory=db_session_factory,
     )
 
     market_scanner_service = providers.Singleton(
@@ -1407,15 +1454,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ).StrategySelectorService,
         ai_client=ai_client,
         strategies=providers.List(),   # populated via factory
-    )
-
-    # ── Phase 19 — Portfolio Intelligence ─────────────────────────────────────
-    portfolio_intelligence_service = providers.Singleton(
-        __import__(
-            "core.application.services.portfolio_intelligence_service",
-            fromlist=["PortfolioIntelligenceService"],
-        ).PortfolioIntelligenceService,
-        session_factory=db_session_factory,
     )
 
     # ── Phase 20.5 — Post-Trade Intelligence ──────────────────────────────────

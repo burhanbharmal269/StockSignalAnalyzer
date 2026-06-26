@@ -1,0 +1,43 @@
+version: "1.0"
+
+# EventCalendarService thresholds — Phase 21.1 §2
+# All severity → overlay mappings. Applied on top of market context.
+# Final overlay = min(market_context multiplier, event multiplier).
+
+severity_overlays:
+  LOW:
+    confidence_adj: 0.0
+    size_multiplier: 1.00
+    pause_auto_execution: false
+  MEDIUM:
+    confidence_adj: -3.0
+    size_multiplier: 0.85
+    pause_auto_execution: false
+  HIGH:
+    confidence_adj: -7.0
+    size_multiplier: 0.60
+    pause_auto_execution: false
+  CRITICAL:
+    confidence_adj: -12.0
+    size_multiplier: 0.00
+    pause_auto_execution: true   # sets execution_lock to MANUAL
+
+# NSE expiry auto-seeding (run each scan cycle)
+nse_expiry:
+  seed_days_ahead: 7   # look this many days ahead for upcoming expiry days
+
+  # Monthly expiry (last Tuesday of month)
+  monthly_expiry_day_severity: HIGH      # DTE=0 (expiry day itself)
+  monthly_preexpiry_severity:  MEDIUM    # DTE=1 (day before expiry)
+
+  # NIFTY weekly expiry (Tuesdays that are NOT the last Tuesday)
+  weekly_expiry_day_severity:  MEDIUM
+  weekly_preexpiry_severity:   LOW
+
+  # Quarterly expiry (March, June, September, December monthly expiry)
+  quarterly_months: [3, 6, 9, 12]
+  quarterly_expiry_day_severity: HIGH    # same as monthly (already covered by monthly)
+
+# Look-ahead window: events active within this many minutes are included.
+# Covers the case where an event starts mid-session.
+active_window_minutes: 480   # 8 hours — covers a full trading session

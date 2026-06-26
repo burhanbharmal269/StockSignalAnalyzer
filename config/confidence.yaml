@@ -1,8 +1,10 @@
 version: "1.0"
 
 # Base Confidence: min(ceiling, adjusted_score × score_multiplier)
+# Ceiling raised 60→65: a score-85 signal yielded base=51 (below the 55 gate).
+# Strong signals now achieve base=51 naturally; adjustments push them past the gate.
 base:
-  ceiling: 60
+  ceiling: 65
   score_multiplier: 0.60
 
 # Win Rate Adjustment — source: signal_performance_stats

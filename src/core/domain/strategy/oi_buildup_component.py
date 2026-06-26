@@ -58,8 +58,15 @@ class OIBuildupComponent(IScoreComponent):
             oi_chg, price_chg, cfg
         )
 
-        # Step 3: PCR adjustment (if PCR available)
-        long_pcr, short_pcr = self._pcr_adjustment(context.features.pcr, cfg)
+        # Step 3: PCR adjustment — suppressed on expiry and pre-expiry day.
+        # On DTE=0 (expiry) and DTE=1 (day before): put writers roll positions to
+        # next series, artificially inflating PCR regardless of market direction.
+        # Using PCR as a signal on these days causes false bullish bias. Skip it.
+        _expiry_near = context.dte is not None and context.dte <= 1
+        if _expiry_near:
+            long_pcr, short_pcr = 0.0, 0.0
+        else:
+            long_pcr, short_pcr = self._pcr_adjustment(context.features.pcr, cfg)
 
         # Step 4: Max pain adjustment
         long_mp, short_mp = self._max_pain_adjustment(
@@ -72,8 +79,11 @@ class OIBuildupComponent(IScoreComponent):
         # Step 5: FII net position adjustment
         long_fii, short_fii = self._fii_adjustment(context.fii_net_contracts, cfg)
 
-        # Step 6: OFI confluence bonus — both OI quadrant AND PCR confirm direction
-        long_ofi, short_ofi = self._ofi_confluence(quadrant, context.features.pcr, cfg)
+        # Step 6: OFI confluence bonus — suppressed near expiry (same PCR distortion).
+        if _expiry_near:
+            long_ofi, short_ofi = 0.0, 0.0
+        else:
+            long_ofi, short_ofi = self._ofi_confluence(quadrant, context.features.pcr, cfg)
 
         long_score = max(
             0.0,

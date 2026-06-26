@@ -15,8 +15,18 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+import json as _json
+import os as _os
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+try:
+    import redis.asyncio as _aioredis  # type: ignore[import-untyped]
+    _REDIS_AVAILABLE = True
+except ImportError:
+    _aioredis = None  # type: ignore[assignment]
+    _REDIS_AVAILABLE = False
 
 _log = logging.getLogger(__name__)
 
@@ -272,6 +282,151 @@ class PortfolioIntelligenceService:
             "closed_today":         int(row[3] or 0),
             "thresholds":           {"warning": _HEAT_WARNING_PCT, "critical": _HEAT_CRITICAL_PCT},
         }
+
+    # ── Section 3b: Portfolio Heat Hard Gate (Phase 21.1 §7) ─────────────────
+    #
+    # This method is called by PipelineEventHandler BEFORE creating an order.
+    # It moves the 100% heat rejection from an analytics warning to a hard gate
+    # that blocks order execution while still allowing signal storage.
+
+    async def check_heat_hard_gate(self) -> tuple[bool, float]:
+        """Return (is_blocked, heat_pct).
+
+        Blocked when heat_pct >= 100 (CRITICAL).  PipelineEventHandler should
+        return early without calling OMS when is_blocked=True.
+        """
+        try:
+            heat = await self.get_portfolio_heat()
+            pct  = heat.get("heat_pct", 0.0)
+            if pct >= _HEAT_CRITICAL_PCT:
+                _log.warning(
+                    "portfolio.heat_hard_gate_triggered heat_pct=%.1f%% — blocking order placement",
+                    pct,
+                )
+                return True, pct
+            return False, pct
+        except Exception as exc:
+            _log.debug("portfolio.heat_gate_check_failed: %s", exc)
+            return False, 0.0  # fail-open: don't block on errors
+
+    # ── Section 3c: Market Context Size Multiplier (Phase 21.1 §1 overlay) ──────
+    #
+    # Returns the size_multiplier from the most recent market_context_snapshots row.
+    # Used by PipelineEventHandler to scale position_size_lots before routing to OMS.
+    # Fail-open: returns 1.0 if the table is empty or the query fails.
+
+    async def get_current_size_multiplier(self) -> float:
+        """Return current market context size multiplier (1.0=NORMAL, 0.5=HIGH_RISK, 0.0=PANIC).
+
+        Reads the most recent row from market_context_snapshots.
+        Returns 1.0 (full size) when no snapshot exists yet — safe default for
+        cycles where MarketContextEngine hasn't run yet (e.g. first cycle).
+
+        Logs WARNING if snapshot is stale (> 15 min old) — likely means
+        MarketContextEngine failed to persist last cycle, so we'd be applying
+        the wrong size multiplier to live orders.
+        """
+        _STALE_SECS = 15 * 60   # 15 minutes = 3 scan cycles
+        try:
+            async with self._sf() as db:
+                r = await db.execute(
+                    text("""
+                        SELECT size_multiplier, computed_at
+                        FROM market_context_snapshots
+                        ORDER BY computed_at DESC
+                        LIMIT 1
+                    """)
+                )
+                row = r.fetchone()
+            if row is not None:
+                mult = float(row[0])
+                computed_at = row[1]
+                if computed_at is not None:
+                    age_secs = (datetime.now(UTC) - computed_at.replace(tzinfo=UTC)
+                                if computed_at.tzinfo is None
+                                else (datetime.now(UTC) - computed_at)).total_seconds()
+                    if age_secs > _STALE_SECS:
+                        _log.warning(
+                            "portfolio.size_multiplier_stale age_secs=%.0f mult=%.2f "
+                            "— MCE may have failed to persist last cycle",
+                            age_secs, mult,
+                        )
+                return mult
+        except Exception as exc:
+            _log.warning("portfolio.size_multiplier_lookup_failed: %s", exc)
+        return 1.0
+
+    # ── Section 3d: Scanner Portfolio Context (Phase 21.2 §4) ────────────────
+    #
+    # Pre-fetches the portfolio state snapshot the overlay pipeline needs once
+    # per scan cycle.  All I/O happens here; the overlay pipeline itself is pure.
+
+    async def get_scanner_portfolio_context(self) -> "PortfolioContext":
+        """Return a PortfolioContext snapshot for the current scan cycle.
+
+        Queries: portfolio heat, open symbols, sector exposure.
+        Correlation matrix is read from Redis key 'risk:correlation_matrix'.
+        Fail-open on every sub-query — missing data returns safe defaults.
+        """
+        from core.domain.value_objects.overlay_result import PortfolioContext
+
+        heat_pct      = 0.0
+        open_symbols: frozenset = frozenset()
+        sector_exp: dict[str, float] = {}
+        corr_matrix:  dict = {}
+
+        # Heat
+        try:
+            heat_data = await self.get_portfolio_heat()
+            heat_pct = float(heat_data.get("heat_pct", 0.0))
+        except Exception as exc:
+            _log.debug("portfolio_ctx.heat_failed: %s", exc)
+
+        # Open symbols + sector exposure (single query)
+        today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        try:
+            async with self._sf() as db:
+                r = await db.execute(
+                    text("""
+                        SELECT ticker, COALESCE(sector, 'Unknown') AS sector
+                        FROM signal_analytics
+                        WHERE was_accepted = true
+                          AND outcome IS NULL
+                          AND created_at >= :today
+                    """),
+                    {"today": today_start},
+                )
+                rows = r.fetchall()
+
+            tickers = [row[0] for row in rows]
+            open_symbols = frozenset(tickers)
+
+            # sector exposure as pct of open positions
+            total = len(rows) or 1
+            from collections import Counter
+            sec_counts: Counter = Counter(row[1] for row in rows)
+            sector_exp = {sec: round(cnt / total * 100, 2) for sec, cnt in sec_counts.items()}
+        except Exception as exc:
+            _log.debug("portfolio_ctx.symbols_failed: %s", exc)
+
+        # Correlation matrix from Redis (fail silently — pipeline defaults to ρ=1.0 on miss)
+        if _REDIS_AVAILABLE:
+            try:
+                _redis_url = _os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+                _r = _aioredis.from_url(_redis_url, socket_connect_timeout=1)
+                _raw = await _r.get("risk:correlation_matrix")
+                await _r.aclose()
+                if _raw:
+                    corr_matrix = _json.loads(_raw)
+            except Exception as exc:
+                _log.debug("portfolio_ctx.redis_corr_failed: %s", exc)
+
+        return PortfolioContext(
+            heat_pct=heat_pct,
+            open_symbols=open_symbols,
+            sector_exposure=sector_exp,
+            correlation_matrix=corr_matrix,
+        )
 
     # ── Section 4: Risk of Ruin Monitor ───────────────────────────────────────
 

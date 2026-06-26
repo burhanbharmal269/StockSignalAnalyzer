@@ -1,4 +1,4 @@
-"""Analytics Intelligence Router — Phase 19 + 20.5 + 20.6
+"""Analytics Intelligence Router — Phase 19 + 20.5 + 20.6 + 21.2
 
 All endpoints are read-only analytics. Nothing here changes live strategy,
 thresholds, weights, or signal generation.
@@ -31,6 +31,13 @@ GET  /api/v1/analytics/operator/status            — live scanner status panel
 
 GET  /api/v1/analytics/research/dashboard         — aggregated research intelligence
 GET  /api/v1/analytics/intelligence/weekly        — weekly intelligence report
+
+Phase 21.2 — Overlay Effectiveness (§4-§8, §15):
+GET  /api/v1/analytics/overlay/effectiveness/{overlay_name}  — §4 named overlay: fired vs baseline
+GET  /api/v1/analytics/overlay/events                        — §5 event overlay: with vs no event
+GET  /api/v1/analytics/overlay/regime-stability              — §6 STABLE/TRANSITION/UNSTABLE breakdown
+GET  /api/v1/analytics/overlay/execution-quality             — §7 grade A/B/C/D win-rate monotonicity
+GET  /api/v1/analytics/overlay/milestones                    — §15 auto-evaluate at 200/500/1000 trades
 """
 
 from __future__ import annotations
@@ -45,6 +52,7 @@ from core.application.services.component_attribution_service import ComponentAtt
 from core.application.services.edge_discovery_service import EdgeDiscoveryService
 from core.application.services.loss_cluster_service import LossClusterService
 from core.application.services.operator_observability_service import OperatorObservabilityService
+from core.application.services.overlay_effectiveness_service import OverlayEffectivenessService
 from core.application.services.portfolio_intelligence_service import PortfolioIntelligenceService
 from core.application.services.post_trade_intelligence_service import PostTradeIntelligenceService
 from core.application.services.research_dashboard_service import ResearchDashboardService
@@ -340,3 +348,82 @@ async def get_weekly_intelligence(
     ),
 ) -> dict[str, Any]:
     return await svc.generate(lookback_days=lookback_days)
+
+
+# ── Phase 21.2 — Overlay Effectiveness (§4-§8, §15) ──────────────────────────
+
+@router.get(
+    "/overlay/effectiveness/{overlay_name}",
+    summary="§4 Named overlay effectiveness: fired vs baseline win-rate",
+)
+@inject
+async def get_overlay_effectiveness(
+    overlay_name: str,
+    lookback_days: int = Query(30, ge=7, le=365),
+    _user: CurrentUser = Depends(require_authenticated),  # noqa: B008
+    svc: OverlayEffectivenessService = Depends(  # noqa: B008
+        Provide[ApplicationContainer.overlay_effectiveness_service]
+    ),
+) -> dict[str, Any]:
+    return await svc.get_overlay_effectiveness_report(
+        overlay_name=overlay_name, lookback_days=lookback_days
+    )
+
+
+@router.get(
+    "/overlay/events",
+    summary="§5 Event overlay effectiveness: with-event vs no-event win-rate",
+)
+@inject
+async def get_event_overlay_effectiveness(
+    lookback_days: int = Query(60, ge=7, le=365),
+    _user: CurrentUser = Depends(require_authenticated),  # noqa: B008
+    svc: OverlayEffectivenessService = Depends(  # noqa: B008
+        Provide[ApplicationContainer.overlay_effectiveness_service]
+    ),
+) -> dict[str, Any]:
+    return await svc.get_event_effectiveness(lookback_days=lookback_days)
+
+
+@router.get(
+    "/overlay/regime-stability",
+    summary="§6 Regime stability overlay: STABLE / TRANSITION / UNSTABLE breakdown",
+)
+@inject
+async def get_regime_stability_effectiveness(
+    lookback_days: int = Query(30, ge=7, le=365),
+    _user: CurrentUser = Depends(require_authenticated),  # noqa: B008
+    svc: OverlayEffectivenessService = Depends(  # noqa: B008
+        Provide[ApplicationContainer.overlay_effectiveness_service]
+    ),
+) -> dict[str, Any]:
+    return await svc.get_regime_stability_report(lookback_days=lookback_days)
+
+
+@router.get(
+    "/overlay/execution-quality",
+    summary="§7 Execution grade A/B/C/D win-rate monotonicity check",
+)
+@inject
+async def get_execution_quality_effectiveness(
+    lookback_days: int = Query(30, ge=7, le=365),
+    _user: CurrentUser = Depends(require_authenticated),  # noqa: B008
+    svc: OverlayEffectivenessService = Depends(  # noqa: B008
+        Provide[ApplicationContainer.overlay_effectiveness_service]
+    ),
+) -> dict[str, Any]:
+    return await svc.get_execution_quality_report(lookback_days=lookback_days)
+
+
+@router.get(
+    "/overlay/milestones",
+    summary="§15 Validation milestones: auto-evaluate at 200 / 500 / 1000 completed trades",
+)
+@inject
+async def get_overlay_milestones(
+    _user: CurrentUser = Depends(require_authenticated),  # noqa: B008
+    svc: OverlayEffectivenessService = Depends(  # noqa: B008
+        Provide[ApplicationContainer.overlay_effectiveness_service]
+    ),
+) -> dict[str, Any]:
+    return await svc.check_validation_milestones()
