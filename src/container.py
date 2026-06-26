@@ -238,6 +238,27 @@ class ApplicationContainer(containers.DeclarativeContainer):
         engine=db_read_engine,
     )
 
+    # -------------------------------------------------------------------------
+    # Phase 10 — Event Bus  (declared here so redis_client is available to
+    # signal_repository below)
+    # -------------------------------------------------------------------------
+
+    redis_config: providers.Singleton[RedisConfig] = providers.Singleton(RedisConfig)
+
+    redis_client = providers.Singleton(
+        Redis.from_url,
+        url=redis_config.provided.redis_url,
+        max_connections=redis_config.provided.redis_max_connections,
+        decode_responses=redis_config.provided.redis_decode_responses,
+        protocol=2,  # Redis 5.x (RESP2); redis-py 5.x defaults to RESP3 which 5.x server rejects
+    )
+
+    event_bus = providers.Singleton(
+        RedisStreamEventBus,
+        redis=redis_client,
+        source=settings.provided.app_name,
+    )
+
     signal_repository = providers.Singleton(
         SqlAlchemySignalRepository,
         session_factory=db_session_factory,
@@ -257,26 +278,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
     instrument_repository = providers.Singleton(
         SqlAlchemyInstrumentRepository,
         session_factory=db_session_factory,
-    )
-
-    # -------------------------------------------------------------------------
-    # Phase 10 — Event Bus
-    # -------------------------------------------------------------------------
-
-    redis_config: providers.Singleton[RedisConfig] = providers.Singleton(RedisConfig)
-
-    redis_client = providers.Singleton(
-        Redis.from_url,
-        url=redis_config.provided.redis_url,
-        max_connections=redis_config.provided.redis_max_connections,
-        decode_responses=redis_config.provided.redis_decode_responses,
-        protocol=2,  # Redis 5.x (RESP2); redis-py 5.x defaults to RESP3 which 5.x server rejects
-    )
-
-    event_bus = providers.Singleton(
-        RedisStreamEventBus,
-        redis=redis_client,
-        source=settings.provided.app_name,
     )
 
     # -------------------------------------------------------------------------

@@ -29,7 +29,8 @@ from core.application.services.go_no_go_service import GoNoGoService
 from core.application.services.production_drift_service import ProductionDriftService
 from core.application.services.statistical_validation_service import StatisticalValidationService
 from core.application.services.validation_report_service import ValidationReportService
-from core.presentation.api.dependencies import CurrentUser, require_no_force_change
+from core.presentation.api.v1.dependencies.auth import require_no_force_change
+from core.presentation.api.v1.schemas.auth import CurrentUser
 
 router = APIRouter(prefix="/validation", tags=["Validation"])
 
