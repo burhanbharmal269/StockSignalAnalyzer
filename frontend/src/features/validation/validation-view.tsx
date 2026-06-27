@@ -55,56 +55,74 @@ const GATE_LABELS: Record<string, string> = {
 function ScoreBar({ score, max }: { score: number; max: number }) {
   const pct = Math.round((score / max) * 100);
   const color =
-    pct >= 80 ? "bg-profit" : pct >= 60 ? "bg-primary" : pct >= 40 ? "bg-warning" : "bg-loss";
+    pct >= 80 ? "bg-profit" : pct >= 50 ? "bg-primary" : pct >= 25 ? "bg-warning" : "bg-loss";
+  const textColor =
+    pct >= 80 ? "text-profit" : pct >= 50 ? "text-primary" : pct >= 25 ? "text-warning" : "text-loss";
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-24 rounded-full bg-muted/40 overflow-hidden">
+    <div className="flex items-center gap-2.5">
+      <div className="h-1.5 w-20 rounded-full bg-muted/40 overflow-hidden">
         <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-xs tabular-nums font-mono">
+      <span className={cn("text-xs tabular-nums font-semibold font-mono", textColor)}>
         {score}/{max}
       </span>
     </div>
   );
 }
 
+function CheckItem({ label, check }: { label: string; check: Record<string, unknown> }) {
+  const pts   = check.points as number;
+  const mx    = check.max as number;
+  const full  = pts === mx;
+  const zero  = pts === 0;
+  const meta: string[] = [];
+  if (check.status)     meta.push(String(check.status));
+  if (typeof check.latency_ms === "number") meta.push(`${check.latency_ms}ms`);
+  if (typeof check.age_minutes === "number") meta.push(`${check.age_minutes}min ago`);
+  if (typeof check.age_hours === "number")   meta.push(`${check.age_hours}h ago`);
+  if (typeof check.value === "number")       meta.push(String(check.value));
+  if (typeof check.value === "string")       meta.push(check.value);
+
+  return (
+    <div className="flex items-center justify-between gap-2 py-0.5">
+      <div className="flex items-center gap-1.5 min-w-0">
+        <span className={cn("text-[10px] shrink-0", full ? "text-profit" : zero ? "text-loss" : "text-warning")}>
+          {full ? "✓" : zero ? "✗" : "◑"}
+        </span>
+        <span className="text-[11px] text-foreground/80 capitalize truncate">
+          {label.replace(/_/g, " ")}
+        </span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {meta.length > 0 && (
+          <span className="text-[10px] text-muted-foreground/60 font-mono">{meta.join(" · ")}</span>
+        )}
+        <span className={cn("text-[11px] font-semibold font-mono w-8 text-right",
+          full ? "text-profit" : zero ? "text-loss" : "text-warning")}>
+          {pts}/{mx}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function CategoryCard({ name, cat }: { name: string; cat: ReadinessCategory }) {
   const label = name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const pct   = Math.round((cat.score / cat.max) * 100);
+  const borderColor =
+    pct >= 80 ? "border-profit/30" : pct >= 50 ? "border-primary/20" : pct >= 25 ? "border-warning/30" : "border-loss/30";
+  const bgColor =
+    pct >= 80 ? "bg-profit/5" : pct >= 50 ? "bg-primary/5" : pct >= 25 ? "bg-warning/5" : "bg-loss/5";
+
   return (
-    <div className="rounded border border-border/60 p-3 space-y-2">
+    <div className={cn("rounded-lg border p-3.5 space-y-2.5", borderColor, bgColor)}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold">{label}</span>
+        <span className="text-xs font-bold tracking-tight">{label}</span>
         <ScoreBar score={cat.score} max={cat.max} />
       </div>
-      <div className="space-y-1">
+      <div className="border-t border-border/30 pt-2 space-y-0.5">
         {Object.entries(cat.checks).map(([key, check]) => (
-          <div key={key} className="flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground capitalize">
-              {key.replace(/_/g, " ")}
-            </span>
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground/70">
-                {check.status ?? ""}
-                {typeof check.latency_ms === "number" ? ` ${check.latency_ms}ms` : ""}
-                {typeof check.age_minutes === "number" ? ` ${check.age_minutes}min ago` : ""}
-                {typeof check.age_hours === "number" ? ` ${check.age_hours}h ago` : ""}
-                {typeof check.value === "number" ? ` ${check.value}` : ""}
-                {typeof check.value === "string" ? ` ${check.value}` : ""}
-              </span>
-              <span
-                className={cn(
-                  "font-mono font-semibold",
-                  check.points === check.max
-                    ? "text-profit"
-                    : check.points > 0
-                    ? "text-warning"
-                    : "text-loss"
-                )}
-              >
-                {check.points}/{check.max}
-              </span>
-            </div>
-          </div>
+          <CheckItem key={key} label={key} check={check as Record<string, unknown>} />
         ))}
       </div>
     </div>
@@ -112,20 +130,42 @@ function CategoryCard({ name, cat }: { name: string; cat: ReadinessCategory }) {
 }
 
 function ReadinessPanel({ data }: { data: DeploymentReadiness }) {
+  const score = data.total_score;
+  const scoreCls = score >= 75 ? "text-profit" : score >= 50 ? "text-primary" : score >= 30 ? "text-warning" : "text-loss";
+  const gatesPassed = Object.values(data.categories).filter(
+    (c) => (c as ReadinessCategory).score === (c as ReadinessCategory).max
+  ).length;
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-4 flex-wrap">
-        <div className="text-4xl font-bold tabular-nums font-mono">
-          {data.total_score}
-          <span className="text-lg text-muted-foreground">/100</span>
+    <div className="space-y-5">
+      {/* Score header */}
+      <div className="flex items-center gap-5 flex-wrap">
+        <div className="flex items-end gap-1 leading-none">
+          <span className={cn("text-5xl font-bold tabular-nums font-mono", scoreCls)}>{score}</span>
+          <span className="text-xl text-muted-foreground mb-1">/100</span>
         </div>
-        <span className={cn("px-3 py-1 rounded-full border text-sm font-semibold", TIER_STYLES[data.tier])}>
-          {TIER_LABELS[data.tier] ?? data.tier}
-        </span>
+        <div className="space-y-1.5">
+          <span className={cn("inline-block px-3 py-1 rounded-full border text-sm font-semibold", TIER_STYLES[data.tier])}>
+            {TIER_LABELS[data.tier] ?? data.tier}
+          </span>
+          <div className="h-2 w-48 rounded-full bg-muted/40 overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all",
+                score >= 75 ? "bg-profit" : score >= 50 ? "bg-primary" : score >= 30 ? "bg-warning" : "bg-loss"
+              )}
+              style={{ width: `${score}%` }}
+            />
+          </div>
+        </div>
+        <div className="text-xs text-muted-foreground ml-2">
+          {gatesPassed}/{Object.keys(data.categories).length} categories fully passing
+        </div>
       </div>
+
+      {/* Category cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
         {Object.entries(data.categories).map(([key, cat]) => (
-          <CategoryCard key={key} name={key} cat={cat} />
+          <CategoryCard key={key} name={key} cat={cat as ReadinessCategory} />
         ))}
       </div>
     </div>
@@ -275,37 +315,55 @@ function BugDetectionPanel({ data }: { data: import("@/types").BugDetection }) {
   );
 }
 
-function DriftRow({ d }: { d: DriftCheck }) {
+function DriftRow({ d, highlight }: { d: DriftCheck; highlight: boolean }) {
   const label = d.metric.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const sig   = d.significance === "SIGNIFICANT";
   const dir   = d.direction;
+  const chgPos = d.pct_change != null && d.pct_change > 0;
+  const chgNeg = d.pct_change != null && d.pct_change < 0;
+
   return (
-    <tr className="border-b border-border/40 last:border-0">
-      <td className="py-2 pl-3 pr-4 text-xs font-medium whitespace-nowrap">{label}</td>
-      <td className="py-2 pr-4 tabular-nums text-xs text-right font-mono text-muted-foreground">
-        {d.reference != null ? d.reference.toFixed(2) : "—"}
-      </td>
-      <td className="py-2 pr-4 tabular-nums text-xs text-right font-mono">
-        {d.comparison != null ? d.comparison.toFixed(2) : "—"}
-      </td>
-      <td className="py-2 pr-4 tabular-nums text-xs text-right font-mono">
-        {d.pct_change != null ? (
-          <span className={cn(d.pct_change > 0 ? "text-profit" : "text-loss")}>
-            {d.pct_change > 0 ? "+" : ""}{d.pct_change.toFixed(1)}%
+    <tr className={cn(
+      "border-b border-border/40 last:border-0 transition-colors",
+      highlight && sig && dir === "DEGRADED" ? "bg-loss/5" :
+      highlight && sig && dir === "IMPROVED" ? "bg-profit/5" :
+      "hover:bg-muted/20"
+    )}>
+      <td className="py-2.5 pl-3 pr-4 text-xs font-semibold whitespace-nowrap text-foreground">
+        {label}
+        {sig && (
+          <span className={cn("ml-1.5 text-[10px] font-bold px-1 py-0.5 rounded",
+            dir === "IMPROVED" ? "bg-profit/10 text-profit" : "bg-loss/10 text-loss")}>
+            {dir === "IMPROVED" ? "▲ IMPROVED" : "▼ DEGRADED"}
           </span>
-        ) : "—"}
-      </td>
-      <td className="py-2 pr-4 text-xs">
-        {sig ? (
-          <span className={cn("font-bold", dir === "IMPROVED" ? "text-profit" : "text-loss")}>
-            {dir}
-          </span>
-        ) : (
-          <span className="text-muted-foreground text-[11px]">stable</span>
         )}
       </td>
-      <td className="py-2 pr-3 tabular-nums text-xs text-right font-mono text-muted-foreground/60">
-        z={d.z_stat.toFixed(2)}
+      <td className="py-2.5 pr-4 tabular-nums text-xs text-right font-mono text-muted-foreground">
+        {d.reference != null ? d.reference.toFixed(2) : "—"}
+      </td>
+      <td className={cn("py-2.5 pr-4 tabular-nums text-xs text-right font-mono font-semibold",
+        sig && dir === "IMPROVED" ? "text-profit" :
+        sig && dir === "DEGRADED" ? "text-loss" :
+        "text-foreground"
+      )}>
+        {d.comparison != null ? d.comparison.toFixed(2) : "—"}
+      </td>
+      <td className="py-2.5 pr-4 tabular-nums text-xs text-right font-mono">
+        {d.pct_change != null ? (
+          <span className={cn(
+            "font-semibold",
+            chgPos ? "text-profit" : chgNeg ? "text-loss" : "text-muted-foreground"
+          )}>
+            {chgPos ? "+" : ""}{d.pct_change.toFixed(1)}%
+          </span>
+        ) : <span className="text-muted-foreground">—</span>}
+      </td>
+      <td className="py-2.5 pr-3 tabular-nums text-[11px] text-right font-mono">
+        <span className={cn(
+          sig ? "font-semibold" : "text-muted-foreground/50"
+        )}>
+          z={d.z_stat.toFixed(2)}
+        </span>
       </td>
     </tr>
   );
@@ -489,34 +547,56 @@ export function ValidationView() {
           )}
           {driftQ.data && (() => {
             const drift = driftQ.data as import("@/types").ProductionDrift;
+            const drifted = drift.summary.significant_drifts;
             return (
-              <div className="space-y-3">
-                <div className="text-xs text-muted-foreground flex gap-4 flex-wrap">
-                  <span>Reference: {drift.periods.reference.start.slice(0, 10)} → {drift.periods.reference.end.slice(0, 10)}</span>
-                  <span>Comparison: {drift.periods.comparison.start.slice(0, 10)} → {drift.periods.comparison.end.slice(0, 10)}</span>
-                  <span className={cn("font-semibold", drift.summary.system_stable ? "text-profit" : "text-warning")}>
-                    {drift.summary.significant_drifts === 0 ? "System stable" : `${drift.summary.significant_drifts} drift(s)`}
+              <div className="space-y-4">
+                {/* Summary bar */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex gap-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="font-medium text-foreground/70">Ref:</span>
+                      {drift.periods.reference.start.slice(0, 10)} → {drift.periods.reference.end.slice(0, 10)}
+                    </span>
+                    <span className="text-border">·</span>
+                    <span className="flex items-center gap-1">
+                      <span className="font-medium text-foreground/70">Now:</span>
+                      {drift.periods.comparison.start.slice(0, 10)} → {drift.periods.comparison.end.slice(0, 10)}
+                    </span>
+                  </div>
+                  <span className={cn(
+                    "ml-auto text-xs font-bold px-2.5 py-1 rounded-full",
+                    drifted === 0
+                      ? "bg-profit/10 text-profit"
+                      : drifted <= 1
+                      ? "bg-warning/10 text-warning"
+                      : "bg-loss/10 text-loss"
+                  )}>
+                    {drifted === 0 ? "✓ Stable" : `${drifted} drift${drifted > 1 ? "s" : ""} detected`}
                   </span>
                 </div>
-                <div className="overflow-auto rounded border border-border/40">
+
+                {/* Table */}
+                <div className="overflow-auto rounded-lg border border-border/50">
                   <table className="min-w-full text-sm">
                     <thead>
-                      <tr className="border-b border-border/40 bg-muted/30 text-[11px] text-muted-foreground">
-                        <th className="py-2 pl-3 pr-4 text-left">Metric</th>
-                        <th className="py-2 pr-4 text-right">Reference</th>
-                        <th className="py-2 pr-4 text-right">Now</th>
-                        <th className="py-2 pr-4 text-right">Change</th>
-                        <th className="py-2 pr-4 text-left">Status</th>
-                        <th className="py-2 pr-3 text-right">z</th>
+                      <tr className="border-b border-border/40 bg-muted/30">
+                        <th className="py-2.5 pl-3 pr-4 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Metric</th>
+                        <th className="py-2.5 pr-4 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Reference</th>
+                        <th className="py-2.5 pr-4 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Now</th>
+                        <th className="py-2.5 pr-4 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Change</th>
+                        <th className="py-2.5 pr-3 text-right text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">z-score</th>
                       </tr>
                     </thead>
                     <tbody>
                       {drift.drift_checks.map((d, i) => (
-                        <DriftRow key={i} d={d} />
+                        <DriftRow key={i} d={d} highlight={true} />
                       ))}
                     </tbody>
                   </table>
                 </div>
+                <p className="text-[11px] text-muted-foreground/50">
+                  Significance threshold: |z| ≥ 1.96 (p &lt; 0.05). Inline badge shows direction only for significant drifts.
+                </p>
               </div>
             );
           })()}

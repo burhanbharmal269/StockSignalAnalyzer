@@ -15,8 +15,46 @@ Detects 9 silent-failure patterns in the pipeline:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
+
+_IST = ZoneInfo("Asia/Kolkata")
+_MARKET_OPEN_IST  = (9, 0)   # 09:00 IST — allow a 15-min buffer before 9:15
+_MARKET_CLOSE_IST = (15, 45)  # 15:45 IST
+
+
+def _is_trading_session_active() -> bool:
+    """Return True if IST clock is inside Mon–Fri 09:00–15:45."""
+    now_ist = datetime.now(_IST)
+    if now_ist.weekday() >= 5:          # Saturday=5, Sunday=6
+        return False
+    h, m = now_ist.hour, now_ist.minute
+    after_open  = (h, m) >= _MARKET_OPEN_IST
+    before_close = (h, m) <= _MARKET_CLOSE_IST
+    return after_open and before_close
+
+
+def _ist_minutes_since_last_signal(last_signal_utc: datetime) -> float:
+    """
+    Count only trading-session minutes between last_signal and now.
+    On a weekend or outside hours, the age in calendar-minutes is irrelevant;
+    return 0 to suppress the idle alert.
+    """
+    now_utc = datetime.now(UTC)
+    now_ist = now_utc.astimezone(_IST)
+
+    # Weekend suppression: if today is Sat/Sun and last signal was on a weekday, OK
+    if now_ist.weekday() >= 5:
+        return 0.0
+
+    # Outside market hours today: not idle
+    h, m = now_ist.hour, now_ist.minute
+    if (h, m) < _MARKET_OPEN_IST or (h, m) > _MARKET_CLOSE_IST:
+        return 0.0
+
+    # Within today's session — count raw calendar minutes (session already active)
+    return (now_utc - last_signal_utc.replace(tzinfo=UTC)).total_seconds() / 60
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -328,9 +366,15 @@ class BugDetectionService:
             "acceptance_rate_too_low",
             detected,
             "HIGH" if detected else "OK",
-            "Signal acceptance rate is below 5% — confidence gates or overlay pipeline may be rejecting everything systematically.",
+            f"Signal acceptance rate is {round(rate, 2)}% ({accepted}/{total}) — confidence gates or overlay pipeline may be rejecting everything systematically.",
             {"acceptance_rate_pct": round(rate, 2), "accepted": accepted, "total": total},
-            "Review confidence gate thresholds and overlay pipeline rejection logic. Check if a recent config change tightened gates too aggressively." if detected else "",
+            (
+                "Common causes: (1) avg score < 55 failing the score gate, "
+                "(2) confidence < 60 failing the confidence gate, "
+                "(3) overlay penalties pushing adjusted_score below threshold, "
+                "(4) missing VIX or market data causing overlay to reject all signals. "
+                "Check signal_analytics.adjusted_score distribution and overlay rejection reasons."
+            ) if detected else "",
         )
 
     # ── 8. Scanner idle ───────────────────────────────────────────────────────
@@ -343,22 +387,47 @@ class BugDetectionService:
             row = r.fetchone()
 
         last_signal = row[0] if row else None
-        if last_signal:
-            age_min = (datetime.now(UTC) - last_signal.replace(tzinfo=UTC)).total_seconds() / 60
+
+        # If we're not in a live trading session, the scanner SHOULD be idle.
+        # Only count idle time during Mon–Fri 09:00–15:45 IST.
+        session_active = _is_trading_session_active()
+
+        if last_signal and session_active:
+            age_min = _ist_minutes_since_last_signal(last_signal)
+        elif last_signal and not session_active:
+            age_min = 0.0  # outside market hours — not a bug
         else:
             age_min = float("inf")
 
-        detected = age_min > 120  # no signal in 2 hours
+        calendar_age = (
+            (datetime.now(UTC) - last_signal.replace(tzinfo=UTC)).total_seconds() / 60
+            if last_signal else None
+        )
+
+        detected = age_min > 120  # no signal in 2 hours during an active session
+
+        now_ist = datetime.now(_IST)
+        market_status = (
+            "MARKET_CLOSED_WEEKEND" if now_ist.weekday() >= 5
+            else "MARKET_CLOSED_HOURS" if not session_active
+            else "MARKET_OPEN"
+        )
 
         return _bug(
             "scanner_idle",
             detected,
             "HIGH" if detected else "OK",
-            f"No signals generated in the last {round(age_min)} minutes — scanner may have stopped or crashed.",
+            (
+                f"No signals generated in the last {round(age_min)} trading-session minutes — scanner may have stopped or crashed."
+                if detected else
+                f"Scanner last ran {round(calendar_age or 0)} calendar-minutes ago. Market is currently {market_status.replace('_', ' ').lower()} — idle is expected."
+            ),
             {
-                "last_signal_at":   last_signal.isoformat() if last_signal else None,
-                "age_minutes":      round(age_min, 1) if age_min != float("inf") else None,
-                "threshold_minutes": 120,
+                "last_signal_at":      last_signal.isoformat() if last_signal else None,
+                "session_age_minutes": round(age_min, 1) if age_min != float("inf") else None,
+                "calendar_age_minutes": round(calendar_age, 1) if calendar_age is not None else None,
+                "market_status":       market_status,
+                "threshold_minutes":   120,
             },
             "Check SignalScannerService logs for errors. Verify Celery/APScheduler tasks are running and market data feed is alive." if detected else "",
         )
