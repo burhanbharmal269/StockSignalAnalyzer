@@ -434,11 +434,11 @@ export function ValidationView() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: "Readiness", value: `${health.score}/100`, sub: health.tier.replace(/_/g, " ") },
-              { label: "Trades",    value: String(summary.go_no_go.trade_stats.n), sub: "completed" },
-              { label: "Win Rate",  value: `${summary.go_no_go.trade_stats.win_rate_pct.toFixed(1)}%`, sub: "" },
+              { label: "Trades",    value: String(summary.go_no_go.trade_stats?.n ?? 0), sub: "completed" },
+              { label: "Win Rate",  value: summary.go_no_go.trade_stats?.win_rate_pct != null ? `${summary.go_no_go.trade_stats.win_rate_pct.toFixed(1)}%` : "—", sub: "" },
               {
                 label: "Profit Factor",
-                value: summary.go_no_go.trade_stats.profit_factor?.toFixed(2) ?? "—",
+                value: summary.go_no_go.trade_stats?.profit_factor?.toFixed(2) ?? "—",
                 sub: "",
               },
             ].map((s) => (
