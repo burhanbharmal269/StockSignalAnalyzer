@@ -357,7 +357,7 @@ export interface LiveVsPaperStats {
   pnl_stddev:       number | null;
 }
 
-export interface DriftCheck {
+export interface LvpDriftCheck {
   metric:      string;
   paper:       number | null;
   live:        number | null;
@@ -370,7 +370,7 @@ export interface DriftCheck {
 export interface LiveVsPaperComparison {
   paper:        LiveVsPaperStats;
   live:         LiveVsPaperStats;
-  drift_checks: DriftCheck[];
+  drift_checks: LvpDriftCheck[];
   period_days:  number;
   has_live_data:boolean;
   evaluated_at: string;
