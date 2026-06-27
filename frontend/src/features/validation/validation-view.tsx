@@ -188,9 +188,9 @@ function GoNoGoPanel({ data }: { data: GoNoGo }) {
       <div className="rounded border border-border/60 p-4 bg-muted/10 space-y-2">
         <p className="text-sm font-medium leading-relaxed">{data.recommendation}</p>
         <div className="flex gap-4 text-xs text-muted-foreground flex-wrap pt-1">
-          <span>Trades: <span className="font-mono text-foreground">{stats.n}</span></span>
-          <span>Win rate: <span className="font-mono text-foreground">{stats.win_rate_pct.toFixed(1)}%</span></span>
-          {stats.profit_factor != null && (
+          <span>Trades: <span className="font-mono text-foreground">{stats?.n ?? 0}</span></span>
+          <span>Win rate: <span className="font-mono text-foreground">{stats?.win_rate_pct != null ? `${stats.win_rate_pct.toFixed(1)}%` : "—"}</span></span>
+          {stats?.profit_factor != null && (
             <span>PF: <span className="font-mono text-foreground">{stats.profit_factor.toFixed(2)}</span></span>
           )}
         </div>
