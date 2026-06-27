@@ -136,6 +136,15 @@ class SignalAnalyticsOrm(Base):
     decision_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
     overlay_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Phase 23 — signal qualification + deployment stage (added migration 20260627_1000)
+    qualification_grade: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    qualification_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qualification_version: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    qualification_timestamp: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deployment_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

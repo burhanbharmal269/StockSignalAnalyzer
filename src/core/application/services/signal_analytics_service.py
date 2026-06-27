@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 if TYPE_CHECKING:
     from core.application.services.execution_lock_service import ExecutionLockService
     from core.application.services.option_strike_selector import OptionPlay
+    from core.application.services.signal_qualification_service import SignalQualificationService
     from core.domain.value_objects.signal_request import SignalRequest
     from core.domain.value_objects.signal_result import SignalResult
 
@@ -37,9 +38,11 @@ class SignalAnalyticsService:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         execution_lock_service: "ExecutionLockService | None" = None,
+        qualification_service: "SignalQualificationService | None" = None,
     ) -> None:
         self._sf = session_factory
         self._execution_lock = execution_lock_service
+        self._qualification  = qualification_service
 
     async def _get_execution_mode(self) -> str:
         if self._execution_lock is None:
@@ -165,7 +168,30 @@ class SignalAnalyticsService:
             "decision_trace_json":         overlay.get("decision_trace_json") if overlay else None,
             "decision_version":            overlay.get("decision_version")    if overlay else None,
             "overlay_version":             overlay.get("overlay_version")     if overlay else None,
+
+            # Phase 23 — deployment stage (derived from execution mode)
+            "deployment_stage": (
+                "PAPER" if execution_mode == "MANUAL" else "LIVE_1LOT"
+            ),
+            # Phase 23 §2 — qualification defaults (overwritten below if service present)
+            "qualification_grade":     None,
+            "qualification_reason":    None,
+            "qualification_version":   None,
+            "qualification_timestamp": None,
         }
+
+        # Phase 23 §2 — signal qualification (pure research label, no pipeline effect)
+        if self._qualification is not None:
+            qual = self._qualification.qualify(
+                score=params["adjusted_score"],
+                confidence=params["confidence"],
+                execution_grade=params["execution_grade"],
+                data_quality_score=params["data_quality_score"],
+                market_context=params["market_context"],
+                was_accepted=result.accepted,
+            )
+            if qual:
+                params.update(qual)
 
         async with self._sf() as db:
             await db.execute(
@@ -188,7 +214,10 @@ class SignalAnalyticsService:
                         confidence_attribution_json,
                         context_size_multiplier, overlay_adjusted_confidence,
                         execution_grade,
-                        decision_trace_json, decision_version, overlay_version
+                        decision_trace_json, decision_version, overlay_version,
+                        deployment_stage,
+                        qualification_grade, qualification_reason,
+                        qualification_version, qualification_timestamp
                     ) VALUES (
                         :signal_id, :ticker, :exchange, :direction, :strategy_type, :regime,
                         :sector, :is_index, :execution_mode,
@@ -207,7 +236,10 @@ class SignalAnalyticsService:
                         :confidence_attribution_json,
                         :context_size_multiplier, :overlay_adjusted_confidence,
                         :execution_grade,
-                        :decision_trace_json, :decision_version, :overlay_version
+                        :decision_trace_json, :decision_version, :overlay_version,
+                        :deployment_stage,
+                        :qualification_grade, :qualification_reason,
+                        :qualification_version, :qualification_timestamp
                     )
                 """),
                 params,

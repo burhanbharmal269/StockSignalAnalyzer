@@ -282,6 +282,120 @@ export interface ValidationSummaryReport {
   bug_detection:        BugDetection;
 }
 
+// ─── Phase 23 — Research Operating Model ─────────────────────────────────────
+
+export interface CohortStat {
+  cohort:          string;
+  trade_count:     number;
+  win_rate:        number;
+  profit_factor:   number | null;
+  expectancy:      number | null;
+  sharpe:          number | null;
+  sortino:         number | null;
+  avg_mfe:         number | null;
+  avg_mae:         number | null;
+  avg_score:       number;
+  avg_confidence:  number;
+  avg_data_quality:number;
+}
+
+export interface CohortDimensionSummary {
+  top:                      CohortStat[];
+  bottom:                   CohortStat[];
+  total_cohorts_with_data:  number;
+}
+
+export interface ResearchCubeCell {
+  [dimension: string]:  string | number | null;
+  trade_count:          number;
+  win_rate:             number;
+  profit_factor:        number | null;
+  expectancy:           number | null;
+  sharpe:               number | null;
+}
+
+export interface Recommendation {
+  id:                   number | null;
+  recommendation_type:  string;
+  dimension:            string;
+  cohort_key:           string | null;
+  direction:            string;
+  trade_count:          number;
+  z_statistic:          number | null;
+  p_value:              number | null;
+  ci_low:               number | null;
+  ci_high:              number | null;
+  cohort_win_rate:      number;
+  baseline_win_rate:    number;
+  cohort_pf:            number | null;
+  status:               "WAIT" | "EMERGING" | "READY_FOR_REVIEW" | "APPROVED" | "REJECTED" | "INSUFFICIENT_DATA";
+  expected_improvement: string | null;
+  risk_description:     string | null;
+  rollback_plan:        string | null;
+  generated_at:         string;
+  message?:             string;
+}
+
+export interface FreezePolicyResponse {
+  status:            "ALLOWED" | "ARCHITECTURE_FROZEN";
+  completed_trades:  number;
+  minimum_required:  number;
+  proposed_change:   string;
+  message:           string;
+  requirements:      Record<string, unknown>;
+  evaluated_at:      string;
+}
+
+export interface LiveVsPaperStats {
+  n:                number;
+  win_rate:         number;
+  profit_factor:    number | null;
+  expectancy:       number | null;
+  avg_data_quality: number;
+  ab_grade_pct:     number;
+  worst_trade_pct:  number | null;
+  pnl_stddev:       number | null;
+}
+
+export interface DriftCheck {
+  metric:      string;
+  paper:       number | null;
+  live:        number | null;
+  delta:       number | null;
+  direction:   "IMPROVED" | "DEGRADED" | "UNCHANGED" | "UNKNOWN";
+  significant: boolean;
+  z_statistic: number | null;
+}
+
+export interface LiveVsPaperComparison {
+  paper:        LiveVsPaperStats;
+  live:         LiveVsPaperStats;
+  drift_checks: DriftCheck[];
+  period_days:  number;
+  has_live_data:boolean;
+  evaluated_at: string;
+}
+
+export interface HealthCategory {
+  score:   number;
+  weight:  number;
+  details: Record<string, unknown>;
+}
+
+export interface StrategyHealth {
+  overall:      number;
+  trend:        "IMPROVING" | "STABLE" | "DECLINING";
+  categories:   Record<string, HealthCategory>;
+  evaluated_at: string;
+}
+
+export interface WeeklyReportSummary {
+  week_start:     string;
+  week_end:       string;
+  created_at:     string | null;
+  overall_health: number | null;
+}
+
 // ─── Order ───────────────────────────────────────────────────────────────────
 // Matches backend OrderResponse schema
 

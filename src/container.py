@@ -1211,6 +1211,13 @@ class ApplicationContainer(containers.DeclarativeContainer):
         token_encryptor=token_encryptor,
     )
 
+    signal_qualification_service = providers.Singleton(
+        __import__(
+            "core.application.services.signal_qualification_service",
+            fromlist=["SignalQualificationService"],
+        ).SignalQualificationService,
+    )
+
     signal_analytics_service = providers.Singleton(
         __import__(
             "core.application.services.signal_analytics_service",
@@ -1218,6 +1225,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ).SignalAnalyticsService,
         session_factory=db_session_factory,
         execution_lock_service=execution_lock_service,
+        qualification_service=signal_qualification_service,
     )
 
     signal_outcome_tracker_service = providers.Singleton(
@@ -1383,6 +1391,68 @@ class ApplicationContainer(containers.DeclarativeContainer):
         bug_detection_service=bug_detection_service,
         production_drift_service=production_drift_service,
         go_no_go_service=go_no_go_service,
+    )
+
+    # ── Phase 23 — Research Operating Model ──────────────────────────────────
+
+    cohort_engine_service = providers.Singleton(
+        __import__(
+            "core.application.services.cohort_engine_service",
+            fromlist=["CohortEngineService"],
+        ).CohortEngineService,
+        session_factory=db_session_factory,
+    )
+
+    research_cube_service = providers.Singleton(
+        __import__(
+            "core.application.services.research_cube_service",
+            fromlist=["ResearchCubeService"],
+        ).ResearchCubeService,
+        session_factory=db_session_factory,
+    )
+
+    strategy_health_service = providers.Singleton(
+        __import__(
+            "core.application.services.strategy_health_service",
+            fromlist=["StrategyHealthService"],
+        ).StrategyHealthService,
+        session_factory=db_session_factory,
+        deployment_readiness_service=deployment_readiness_service,
+        bug_detection_service=bug_detection_service,
+        go_no_go_service=go_no_go_service,
+    )
+
+    recommendation_engine_service = providers.Singleton(
+        __import__(
+            "core.application.services.recommendation_engine_service",
+            fromlist=["RecommendationEngineService"],
+        ).RecommendationEngineService,
+        session_factory=db_session_factory,
+        cohort_engine=cohort_engine_service,
+    )
+
+    live_validation_service = providers.Singleton(
+        __import__(
+            "core.application.services.live_validation_service",
+            fromlist=["LiveValidationService"],
+        ).LiveValidationService,
+        session_factory=db_session_factory,
+    )
+
+    weekly_research_service = providers.Singleton(
+        __import__(
+            "core.application.services.weekly_research_service",
+            fromlist=["WeeklyResearchService"],
+        ).WeeklyResearchService,
+        session_factory=db_session_factory,
+        strategy_health_service=strategy_health_service,
+        deployment_readiness_service=deployment_readiness_service,
+        go_no_go_service=go_no_go_service,
+        cohort_engine_service=cohort_engine_service,
+        recommendation_engine_service=recommendation_engine_service,
+        statistical_validation_service=statistical_validation_service,
+        overlay_effectiveness_service=overlay_effectiveness_service,
+        live_validation_service=live_validation_service,
     )
 
     signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(

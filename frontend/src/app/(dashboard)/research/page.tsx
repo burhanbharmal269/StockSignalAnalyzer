@@ -1,8 +1,12 @@
-import ResearchView from "@/features/analytics-intelligence/research-view";
+import { ResearchCommandCenter } from "@/features/research/research-command-center";
 import { APP_NAME } from "@/lib/constants";
 
-export const metadata = { title: `Research Intelligence — ${APP_NAME}` };
+export const metadata = { title: `Research Command Center — ${APP_NAME}` };
 
 export default function ResearchPage() {
-  return <ResearchView />;
+  return (
+    <div className="p-6">
+      <ResearchCommandCenter />
+    </div>
+  );
 }
