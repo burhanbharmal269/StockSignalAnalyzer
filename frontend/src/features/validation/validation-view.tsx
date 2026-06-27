@@ -197,7 +197,7 @@ function GateRow({ gate }: { gate: GoNoGoGate }) {
       {open && (
         <div className="px-4 pb-4 space-y-3 bg-muted/10">
           <div className="space-y-1">
-            {gate.criteria.map((c, i) => (
+            {(gate.criteria ?? []).map((c, i) => (
               <div key={i} className="flex items-center gap-3 text-xs">
                 <span className={cn("font-bold", c.passed ? "text-profit" : "text-loss")}>
                   {c.passed ? "✓" : "✗"}
@@ -236,7 +236,7 @@ function GoNoGoPanel({ data }: { data: GoNoGo }) {
         </div>
       </div>
       <div className="space-y-2">
-        {data.gates.map((gate) => (
+        {(data.gates ?? []).map((gate) => (
           <GateRow key={gate.gate} gate={gate} />
         ))}
       </div>
