@@ -1599,6 +1599,41 @@ class ApplicationContainer(containers.DeclarativeContainer):
         session_factory=db_session_factory,
     )
 
+    # ── Phase 24 — Operations Mode ────────────────────────────────────────────
+
+    platform_readiness_service = providers.Singleton(
+        __import__(
+            "core.application.services.platform_readiness_service",
+            fromlist=["PlatformReadinessService"],
+        ).PlatformReadinessService,
+        session_factory=db_session_factory,
+    )
+
+    incident_service = providers.Singleton(
+        __import__(
+            "core.application.services.incident_service",
+            fromlist=["IncidentService"],
+        ).IncidentService,
+        session_factory=db_session_factory,
+    )
+
+    scan_metrics_service = providers.Singleton(
+        __import__(
+            "core.application.services.scan_metrics_service",
+            fromlist=["ScanMetricsService"],
+        ).ScanMetricsService,
+        session_factory=db_session_factory,
+    )
+
+    pre_market_checklist_service = providers.Singleton(
+        __import__(
+            "core.application.services.pre_market_checklist_service",
+            fromlist=["PreMarketChecklistService"],
+        ).PreMarketChecklistService,
+        session_factory=db_session_factory,
+        platform_readiness_svc=platform_readiness_service,
+    )
+
     component_attribution_service = providers.Singleton(
         __import__(
             "core.application.services.component_attribution_service",

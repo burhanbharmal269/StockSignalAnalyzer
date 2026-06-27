@@ -80,7 +80,7 @@ async def get_cohort_dimension(
 @router.get("/cube", summary="Multi-dimensional research cube (up to 3 dimensions)")
 @inject
 async def query_cube(
-    dimensions: Annotated[list[str], Query()] = ["score_bucket", "regime"],
+    dimensions: list[str] = Query(default=["score_bucket", "regime"]),
     min_trades: int = Query(5, ge=1, le=100),
     days_back: int | None = Query(None, ge=1, le=365),
     _user: CurrentUser = Depends(require_no_force_change),

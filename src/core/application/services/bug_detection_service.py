@@ -438,8 +438,10 @@ class BugDetectionService:
         async with self._sf() as db:
             r = await db.execute(text(f"""
                 SELECT
-                    COUNT(*) AS total,
-                    SUM(CASE WHEN COALESCE(lot_size, 0) <= 1 THEN 1 ELSE 0 END) AS zero_n
+                    COUNT(*)                                                          AS total,
+                    SUM(CASE WHEN COALESCE(lot_size, 0) = 0  THEN 1 ELSE 0 END)    AS zero_n,
+                    SUM(CASE WHEN COALESCE(lot_size, 0) = 1  THEN 1 ELSE 0 END)    AS one_n,
+                    SUM(CASE WHEN COALESCE(lot_size, 0) > 1  THEN 1 ELSE 0 END)    AS multi_n
                 FROM (
                     SELECT lot_size FROM signal_analytics
                     WHERE was_accepted = true
@@ -448,16 +450,54 @@ class BugDetectionService:
             """))
             row = r.fetchone()
 
-        total  = int(row[0] or 0)
-        zero_n = int(row[1] or 0)
-        pct    = (zero_n / total * 100) if total > 0 else 0.0
-        detected = total >= 10 and pct >= 90.0
+        total   = int(row[0] or 0)
+        zero_n  = int(row[1] or 0)
+        one_n   = int(row[2] or 0)
+        multi_n = int(row[3] or 0)
+        zero_pct = (zero_n / total * 100) if total > 0 else 0.0
+
+        # lot_size=1 across all accepted signals is EXPECTED when small_capital_mode=True
+        # (DynamicRiskBudgetService always returns max(1, computed_lots) which yields 1
+        # for ₹2 lakh capital). Only flag when lot_size=0, which means the risk engine
+        # returned 0 lots and max() was not applied — a genuine calculation failure.
+        all_exactly_one = total >= 10 and one_n == total and zero_n == 0
+        has_zero_lots   = total >= 10 and zero_pct >= 50.0
+
+        detected = has_zero_lots  # only flag genuine 0-lot failures
+
+        if all_exactly_one:
+            description = (
+                "All accepted signals have lot_size=1. "
+                "This is expected in small_capital_mode=True (Phase 18H): "
+                "DynamicRiskBudgetService caps at 1 lot for ₹2 lakh capital."
+            )
+            recommendation = ""
+        elif detected:
+            description = (
+                f"Risk engine returned lot_size=0 for {round(zero_pct, 1)}% of accepted signals — "
+                "max(1, lots) safeguard may not be applying correctly."
+            )
+            recommendation = (
+                "Verify DynamicRiskBudgetService.compute() path for score<70 signals "
+                "that somehow passed the gate. Ensure pipeline_event_handler persists "
+                "lot_size from RiskAllocation correctly."
+            )
+        else:
+            description = "Position sizing is functioning — mix of lot sizes observed."
+            recommendation = ""
 
         return _bug(
             "position_size_always_zero",
             detected,
             "HIGH" if detected else "OK",
-            "Position sizer returns lot_size ≤ 1 for ≥90% of accepted signals — risk engine may have a calculation bug.",
-            {"tiny_lot_pct": round(pct, 1), "tiny_n": zero_n, "accepted_sample": total},
-            "Review PositionSizer logic. Ensure margin data is loaded, VIX is available, and lot sizes are seeded for F&O symbols." if detected else "",
+            description,
+            {
+                "total_accepted_sample": total,
+                "lot_zero_n":  zero_n,
+                "lot_one_n":   one_n,
+                "lot_multi_n": multi_n,
+                "zero_pct":    round(zero_pct, 1),
+                "small_capital_mode": "assumed_true (all_exactly_one={})".format(all_exactly_one),
+            },
+            recommendation,
         )

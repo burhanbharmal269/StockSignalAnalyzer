@@ -66,6 +66,7 @@ from core.presentation.api.v1.routers.settings_router import router as settings_
 from core.presentation.api.v1.routers.analytics_intelligence_router import router as analytics_intelligence_router
 from core.presentation.api.v1.routers.validation_router import router as validation_router
 from core.presentation.api.v1.routers.research_router import router as research_router
+from core.presentation.api.v1.routers.platform_router import router as platform_router
 
 logger = get_logger(__name__)
 
@@ -286,9 +287,12 @@ def create_app() -> FastAPI:
         registry.register("auto_kill_switch", auto_kill_switch.run)
         registry.register("session_expiry_watcher", session_expiry_watcher.run)
         registry.register("option_chain_poller", option_chain_poller.run)
+        pre_market_checklist = container.pre_market_checklist_service()
+
         registry.register("signal_scanner", signal_scanner.run)
         registry.register("signal_outcome_tracker", outcome_tracker.run)
         registry.register("market_close_exit", market_close_exit.start)
+        registry.register("pre_market_checklist", pre_market_checklist.run)
         await registry.start()
 
         # Start live market feed (Kite WS in live mode; NSE polling fallback otherwise)
@@ -397,6 +401,7 @@ def create_app() -> FastAPI:
             "core.presentation.api.v1.routers.analytics_intelligence_router",
             "core.presentation.api.v1.routers.validation_router",
             "core.presentation.api.v1.routers.research_router",
+            "core.presentation.api.v1.routers.platform_router",
         ]
     )
     app.include_router(health_router)
@@ -430,6 +435,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics_intelligence_router)
     app.include_router(validation_router, prefix="/api/v1")
     app.include_router(research_router, prefix="/api/v1")
+    app.include_router(platform_router, prefix="/api/v1")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics_endpoint() -> Response:

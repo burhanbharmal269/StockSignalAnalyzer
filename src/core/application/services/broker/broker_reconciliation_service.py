@@ -48,7 +48,7 @@ class BrokerReconciliationService:
         """
         session = await self._session_repo.get_active(self._broker_name)
         if session is None:
-            _log.warning(
+            _log.debug(
                 "BrokerReconciliationService.run: no active session for broker=%s — skipping",
                 self._broker_name,
             )
