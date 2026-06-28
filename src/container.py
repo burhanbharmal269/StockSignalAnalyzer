@@ -1469,6 +1469,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         execution_lock_svc=execution_lock_service,
         overlay_pipeline=overlay_pipeline,
         portfolio_svc=portfolio_intelligence_service,
+        scan_metrics_svc=scan_metrics_service,
     )
 
     market_close_exit_service: providers.Singleton[MarketCloseExitService] = providers.Singleton(

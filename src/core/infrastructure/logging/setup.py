@@ -139,6 +139,11 @@ def configure_logging(
     # Quiet noisy third-party loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.error").setLevel(logging.INFO)
+    # httpx/httpcore log every TCP frame at DEBUG — suppress below WARNING
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # watchfiles logs every file-change scan at DEBUG
+    logging.getLogger("watchfiles").setLevel(logging.WARNING)
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

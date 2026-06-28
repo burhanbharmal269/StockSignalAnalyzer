@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import random
+import time
 from datetime import UTC, date, datetime, time as _dtime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
@@ -38,6 +39,7 @@ if TYPE_CHECKING:
     from core.application.services.overlay_pipeline import OverlayPipeline
     from core.application.services.portfolio_intelligence_service import PortfolioIntelligenceService
     from core.application.services.risk_manager_service import RiskManagerService
+    from core.application.services.scan_metrics_service import ScanMetricsService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
     from core.application.services.signal_engine_service import SignalEngineService
     from core.domain.value_objects.market_context_snapshot import MarketContextSnapshot
@@ -609,6 +611,7 @@ class SignalScannerService:
         execution_lock_svc: "ExecutionLockService | None" = None,
         overlay_pipeline: "OverlayPipeline | None" = None,
         portfolio_svc: "PortfolioIntelligenceService | None" = None,
+        scan_metrics_svc: "ScanMetricsService | None" = None,
     ) -> None:
         from core.application.services.data_quality_service import DataQualityService
         from core.application.services.option_strike_selector import OptionStrikeSelector
@@ -625,6 +628,7 @@ class SignalScannerService:
         self._exec_lock_svc   = execution_lock_svc
         self._overlay_pipeline = overlay_pipeline
         self._portfolio_svc    = portfolio_svc
+        self._scan_metrics     = scan_metrics_svc
         self._dq_service      = DataQualityService()
         self._strike_selector = OptionStrikeSelector()
         self._running         = False
@@ -693,6 +697,7 @@ class SignalScannerService:
     # ------------------------------------------------------------------
 
     async def _scan_cycle(self) -> dict:
+        _cycle_start = time.monotonic()
         # ── Phase 15: Portfolio risk gate (once per cycle, not per symbol) ────
         if self._risk_manager is not None:
             _risk_allowed, _risk_reason = await self._risk_manager.check()
@@ -812,11 +817,32 @@ class SignalScannerService:
             else:
                 errors += 1
 
+        _cycle_dur = time.monotonic() - _cycle_start
         _log.info(
-            "signal_scanner.cycle_summary accepted=%d rejected=%d gated=%d errors=%d candidates=%d "
+            "signal_scanner.cycle_summary accepted=%d rejected=%d gated=%d errors=%d candidates=%d duration_secs=%.1f "
             "(gated=pre-engine filters: thin_vol/rsi/macd/iv/no_contract/etc)",
-            accepted, rejected, gated, errors, len(candidates),
+            accepted, rejected, gated, errors, len(candidates), _cycle_dur,
         )
+
+        if self._scan_metrics is not None:
+            exec_mode: str | None = None
+            if self._exec_lock_svc is not None:
+                try:
+                    exec_mode = (await self._exec_lock_svc.get_mode()).value
+                except Exception:
+                    pass
+            await self._scan_metrics.record(
+                scan_duration_seconds=round(_cycle_dur, 2),
+                symbols_scanned=len(candidates),
+                symbols_failed=errors,
+                signals_generated=accepted,
+                signals_rejected=rejected,
+                signals_gated=gated,
+                india_vix=india_vix,
+                market_context=market_ctx.regime.value if market_ctx else None,
+                execution_mode=exec_mode,
+            )
+
         return {
             "accepted":   accepted,
             "rejected":   rejected,
