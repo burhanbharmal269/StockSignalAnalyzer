@@ -98,7 +98,9 @@ def configure_logging(
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         secrets_scrubber,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.ExceptionRenderer(),
+        # ExceptionRenderer belongs in ProcessorFormatter.processors only (not here).
+        # Placing it in shared_processors causes structlog to emit a UserWarning about
+        # format_exc_info conflicts when both the pre-chain and the formatter render exc_info.
     ]
 
     if log_format == "json":
@@ -120,6 +122,7 @@ def configure_logging(
     formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.ExceptionRenderer(),
             renderer,
         ],
         foreign_pre_chain=shared_processors,

@@ -54,12 +54,14 @@ class NSEFallbackProvider(IMarketDataProvider):
                 follow_redirects=True,
             )
         if not self._session_valid:
-            # Establish session cookies
+            # Establish session cookies so NSE doesn't 403 all requests.
+            # Mark valid regardless of outcome — we don't retry on every request.
             try:
                 await self._client.get(_NSE_BASE)
-                self._session_valid = True
-            except Exception:
-                pass
+                _log.debug("nse_fallback: session established")
+            except Exception as exc:
+                _log.warning("nse_fallback: session establishment failed: %s", exc)
+            self._session_valid = True
         return self._client
 
     async def _get(self, url: str) -> dict | None:
@@ -70,11 +72,12 @@ class NSEFallbackProvider(IMarketDataProvider):
             r.raise_for_status()
             return r.json()
         except Exception as exc:
-            _log.warning("nse_fallback GET %s failed: %s", url, exc)
+            _log.debug("nse_fallback GET %s failed: %s", url, exc)
             return None
 
     async def get_ltp(self, symbols: list[str]) -> dict[str, Decimal]:
-        result = {}
+        result: dict[str, Decimal] = {}
+        failed: list[str] = []
         for symbol in symbols:
             data = await self._get(f"{_NSE_BASE}/api/quote-equity?symbol={symbol}")
             if data:
@@ -82,7 +85,16 @@ class NSEFallbackProvider(IMarketDataProvider):
                     ltp = Decimal(str(data["priceInfo"]["lastPrice"]))
                     result[symbol] = ltp
                 except (KeyError, TypeError):
-                    pass
+                    failed.append(symbol)
+            else:
+                failed.append(symbol)
+        if failed and not result:
+            _log.warning(
+                "nse_fallback.get_ltp: all %d symbols failed — Kite auth required for live prices",
+                len(failed),
+            )
+        elif failed:
+            _log.debug("nse_fallback.get_ltp: %d/%d symbols failed", len(failed), len(symbols))
         return result
 
     async def get_option_chain(

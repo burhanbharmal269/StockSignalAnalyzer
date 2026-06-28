@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -78,6 +79,7 @@ class LiveMarketFeedService:
         session = await self._session_repo.get_active("kite")
         if not session or session.is_expired() or not self._config.is_live_mode:
             _log.info("live_feed: no live kite session — using NSE polling fallback")
+            await self._redis.set("live_feed:connected", "0")
             return False
         try:
             access_token = await self._encryptor.decrypt(session.encrypted_access_token)
@@ -98,10 +100,12 @@ class LiveMarketFeedService:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, ticker.connect, True)
             self._ws_connected = True
+            await self._redis.set("live_feed:connected", "1")
             _log.info("live_feed: kite websocket started")
             return True
         except Exception as exc:
             _log.warning("kite_ticker.start failed: %s — using NSE polling", exc)
+            await self._redis.set("live_feed:connected", "0")
             return False
 
     def _on_kite_ticks(self, ws, ticks: list[dict]) -> None:
@@ -118,6 +122,7 @@ class LiveMarketFeedService:
 
     def _on_ws_close(self) -> None:
         self._ws_connected = False
+        asyncio.create_task(self._redis.set("live_feed:connected", "0"))
         _log.warning("kite_ticker.closed — switching to NSE polling")
         asyncio.create_task(self._start_polling_fallback())
 
@@ -152,6 +157,7 @@ class LiveMarketFeedService:
 
     async def _publish_tick(self, symbol: str, ltp: Decimal, raw: dict) -> None:
         key = f"{_LIVE_TICK_PREFIX}{symbol}"
+        now_iso = datetime.now(UTC).isoformat()
         payload = json.dumps({
             "symbol": symbol,
             "ltp": float(ltp),
@@ -162,6 +168,7 @@ class LiveMarketFeedService:
             "ask": raw.get("depth", {}).get("sell", [{}])[0].get("price", 0),
         })
         await self._redis.set(key, payload, ex=_TICK_TTL)
+        await self._redis.set("live_feed:last_tick_at", now_iso, ex=_TICK_TTL)
 
     async def get_ltp(self, symbol: str) -> Decimal | None:
         data = await self._redis.get(f"{_LIVE_TICK_PREFIX}{symbol}")

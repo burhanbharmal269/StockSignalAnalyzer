@@ -575,7 +575,7 @@ class MarketUniverseService:
             # demote stocks — only promote and update lot sizes.
             csv_is_partial = len(nfo_fut) < 500
             if csv_is_partial:
-                _log.warning(
+                _log.info(
                     "universe.kite_csv_partial nfo_count=%d — demotion suppressed (expiry-day transition)",
                     len(nfo_fut),
                 )

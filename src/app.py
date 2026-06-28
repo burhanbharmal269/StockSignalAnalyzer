@@ -275,7 +275,7 @@ def create_app() -> FastAPI:
         historical_svc = container.historical_data_service()
         try:
             counts = await historical_svc.bulk_fetch(_FO_INDICES, timeframes=["15m"])
-            logger.info("startup.index_candles_seeded counts=%s", counts)
+            logger.info("startup.index_candles_seeded", counts=counts)
         except Exception:
             logger.warning("startup.index_candles_seed_failed — NIFTY/BANKNIFTY may skip first scan")
 

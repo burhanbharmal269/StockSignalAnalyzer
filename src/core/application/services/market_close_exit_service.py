@@ -94,7 +94,8 @@ class MarketCloseExitService:
 
         count = await self._expire_open_signals()
         self._cutoff_fired_date = today_str
-        _log.warning(
+        log_fn = _log.warning if count > 0 else _log.info
+        log_fn(
             "market_close_exit.cutoff_fired ist=%s expired_signals=%d — "
             "no intraday carry-over",
             now_ist.strftime("%H:%M:%S IST"), count,
