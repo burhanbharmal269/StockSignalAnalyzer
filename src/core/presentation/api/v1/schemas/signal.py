@@ -31,6 +31,7 @@ class SignalResponse(BaseModel):
     entry_price: float | None
     stop_loss_price: float | None
     target_price: float | None
+    execution_grade: str | None = None
     # Option contract recommendation
     option_type: str | None = None
     option_strike: float | None = None

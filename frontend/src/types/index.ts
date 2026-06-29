@@ -102,6 +102,7 @@ export interface Signal {
   entry_price: number | null;
   stop_loss_price: number | null;
   target_price: number | null;
+  execution_grade: string | null;
   // Option contract recommendation
   option_type: string | null;    // "CE" | "PE"
   option_strike: number | null;

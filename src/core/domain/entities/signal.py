@@ -70,6 +70,9 @@ class Signal:
     stop_loss_price: float | None = field(default=None)
     target_price: float | None = field(default=None)
 
+    # Execution quality grade from overlay pipeline — populated from signal_analytics join
+    execution_grade: str | None = field(default=None)
+
     # Option contract recommendation — populated from signal_analytics join
     option_type: str | None = field(default=None)    # "CE" or "PE"
     option_strike: float | None = field(default=None)

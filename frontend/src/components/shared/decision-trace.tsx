@@ -107,9 +107,10 @@ function OverlayRow({ step }: { step: TraceStep }) {
 
 interface DecisionTraceProps {
   signalId: string;
+  regime?: string;
 }
 
-export function DecisionTrace({ signalId }: DecisionTraceProps) {
+export function DecisionTrace({ signalId, regime }: DecisionTraceProps) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["signal-overlay", signalId],
     queryFn: () => analyticsService.getSignalOverlay(signalId),
@@ -160,9 +161,14 @@ export function DecisionTrace({ signalId }: DecisionTraceProps) {
             {data.market_context}
           </span>
         )}
+        {regime && (
+          <span className="text-muted-foreground">
+            Regime: <span className="font-medium text-foreground">{regime}</span>
+          </span>
+        )}
         {data.regime_stability && (
           <span className="text-muted-foreground">
-            Regime: <span className="font-medium text-foreground">{data.regime_stability}</span>
+            Stability: <span className="font-medium text-foreground">{data.regime_stability}</span>
           </span>
         )}
         {trace && (

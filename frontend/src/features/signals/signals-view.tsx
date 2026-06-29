@@ -43,11 +43,12 @@ function computeDte(signal: Signal): number | null {
   return diff >= 0 ? diff : null;
 }
 
-/** Grade A / B badge based on adjusted_score. */
-function signalGrade(signal: Signal): "A" | "B" | null {
-  if (signal.adjusted_score == null) return null;
-  return signal.adjusted_score >= 65 ? "A" : "B";
-}
+const GRADE_STYLES: Record<string, string> = {
+  A: "bg-profit/10 text-profit border-profit/30",
+  B: "bg-warning/10 text-warning border-warning/30",
+  C: "bg-orange-500/10 text-orange-400 border-orange-500/30",
+  D: "bg-loss/10 text-loss border-loss/30",
+};
 
 export function SignalsView() {
   useSignalLiveUpdates();
@@ -104,17 +105,15 @@ export function SignalsView() {
       id: "grade",
       header: "Grade",
       cell: ({ row }) => {
-        const grade = signalGrade(row.original);
+        const grade = row.original.execution_grade;
         const score = row.original.adjusted_score;
-        if (grade == null) return <span className="text-muted-foreground text-xs">—</span>;
+        if (!grade) return <span className="text-muted-foreground text-xs">—</span>;
         return (
           <span
-            title={`Score: ${score?.toFixed(1)}`}
+            title={`Score: ${score?.toFixed(1)} · Execution grade: ${grade}`}
             className={cn(
-              "text-xs font-bold px-1.5 py-0.5 rounded",
-              grade === "A"
-                ? "bg-profit/10 text-profit border border-profit/30"
-                : "bg-warning/10 text-warning border border-warning/30"
+              "text-xs font-bold px-1.5 py-0.5 rounded border",
+              GRADE_STYLES[grade] ?? GRADE_STYLES.B
             )}
           >
             {grade}
@@ -315,7 +314,10 @@ export function SignalsView() {
               ✕
             </button>
           </div>
-          <DecisionTrace signalId={traceSignalId} />
+          <DecisionTrace
+            signalId={traceSignalId}
+            regime={signals.find((s) => s.signal_id === traceSignalId)?.regime}
+          />
         </div>
       )}
     </div>

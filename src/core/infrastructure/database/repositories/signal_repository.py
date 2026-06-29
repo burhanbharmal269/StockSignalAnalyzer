@@ -107,7 +107,8 @@ async def _attach_prices(session: AsyncSession, signals: list[Signal]) -> None:
             SELECT DISTINCT ON (signal_id)
                 signal_id, entry_price, stop_loss_price, target_price,
                 option_type, option_strike, option_expiry, option_symbol,
-                option_entry, option_sl, option_target
+                option_entry, option_sl, option_target,
+                execution_grade
             FROM signal_analytics
             WHERE signal_id = ANY(:ids)
             ORDER BY signal_id, id DESC
@@ -128,6 +129,7 @@ async def _attach_prices(session: AsyncSession, signals: list[Signal]) -> None:
             sig.option_entry     = float(row["option_entry"])     if row["option_entry"]     is not None else None
             sig.option_sl        = float(row["option_sl"])        if row["option_sl"]        is not None else None
             sig.option_target    = float(row["option_target"])    if row["option_target"]    is not None else None
+            sig.execution_grade  = row["execution_grade"]
 
 
 class SqlAlchemySignalRepository(ISignalRepository):

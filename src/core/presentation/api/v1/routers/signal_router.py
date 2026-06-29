@@ -60,6 +60,7 @@ def _to_response(signal: object) -> SignalResponse:
         option_entry=signal.option_entry,
         option_sl=signal.option_sl,
         option_target=signal.option_target,
+        execution_grade=signal.execution_grade,
     )
 
 
