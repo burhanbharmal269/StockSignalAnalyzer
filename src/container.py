@@ -1455,6 +1455,14 @@ class ApplicationContainer(containers.DeclarativeContainer):
         live_validation_service=live_validation_service,
     )
 
+    scan_metrics_service = providers.Singleton(
+        __import__(
+            "core.application.services.scan_metrics_service",
+            fromlist=["ScanMetricsService"],
+        ).ScanMetricsService,
+        session_factory=db_session_factory,
+    )
+
     signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(
         SignalScannerService,
         universe_svc=market_universe_service,
@@ -1615,14 +1623,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
             "core.application.services.incident_service",
             fromlist=["IncidentService"],
         ).IncidentService,
-        session_factory=db_session_factory,
-    )
-
-    scan_metrics_service = providers.Singleton(
-        __import__(
-            "core.application.services.scan_metrics_service",
-            fromlist=["ScanMetricsService"],
-        ).ScanMetricsService,
         session_factory=db_session_factory,
     )
 
