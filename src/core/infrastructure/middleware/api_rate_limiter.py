@@ -29,7 +29,8 @@ _EXEMPT_PREFIXES = ("/api/v1/health", "/metrics", "/docs", "/openapi", "/redoc")
 _SENSITIVE_PREFIXES = ("/api/v1/broker/kill-switch", "/api/v1/audit", "/api/v1/reconciliation/trigger")
 
 _WINDOW_SECONDS = 60
-_DEFAULT_LIMIT = 120
+_DEFAULT_LIMIT = 600   # raised 120→600: single-user app polls 5+ endpoints per cycle;
+                       # 120/min was hit in <60s with normal UI polling load
 _SENSITIVE_LIMIT = 20
 
 
