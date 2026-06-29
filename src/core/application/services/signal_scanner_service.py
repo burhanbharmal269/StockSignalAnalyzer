@@ -1378,14 +1378,30 @@ class SignalScannerService:
                 _log.debug("signal_scanner.option_play_failed symbol=%s: %s", symbol, exc)
 
         # Gate: accepted signals with no option contract are not actionable — skip.
-        # Index futures (NIFTY, BANKNIFTY) always retry; equity with no NFO contract
-        # should not clutter the signals table.
+        # The engine already persisted the signal as RISK_APPROVED, so we must write
+        # the analytics record here so the signal isn't orphaned (no analytics = shows
+        # in UI as RISK_APPROVED with no option data, which is misleading).
         if result.accepted and option_play is None:
             _log.warning(
                 "signal_scanner.no_contract_skip symbol=%s direction=%s — "
-                "no option contract found; signal not saved",
+                "no option contract found; signal gated post-engine",
                 symbol, result.direction,
             )
+            if self._analytics is not None:
+                try:
+                    await self._analytics.record(
+                        symbol_name=symbol,
+                        exchange="NSE",
+                        is_index=sym.is_index,
+                        sector=getattr(sym, "sector", None),
+                        request=req,
+                        result=result,
+                        features=features,
+                        option_play=None,
+                        overlay={"rejection_gate": "no_contract"},
+                    )
+                except Exception as _ae:
+                    _log.debug("signal_scanner.no_contract_analytics_failed symbol=%s: %s", symbol, _ae)
             return "no_contract"
 
         # ── Phase 21.2: Unified Overlay Pipeline ────────────────────────────────

@@ -49,7 +49,11 @@ _DEFAULT_TARGET_B     = 0.28
 
 _MIN_LTP              = 4.0    # ignore strikes below ₹4: ATM 8-DTE options trade at ~2-3% of underlying, so ₹200+ stocks can have ~₹4-6 ATM premiums
 _MIN_LTP_PCT          = 0.004  # also reject if premium < 0.4% of underlying (catches very low-priced stocks)
-_MAX_LTP_PCT          = 0.030  # reject if premium > 3% of underlying (overpaying for IV)
+_MAX_LTP_PCT          = 0.060  # reject if premium > 6% of underlying; 3% was incorrectly
+                                # filtering ATM options for mid/high-priced stocks at 29 DTE
+                                # (e.g. FORCEMOT ₹17986 ATM PE = ₹450-600 = 2.5-3.3% → filtered,
+                                # forcing PE 17000 at 5.5% OTM). IV overpayment is already gated
+                                # upstream by the iv_percentile scanner gate.
 _MIN_OI_FLOOR         = 500    # raised 300→500: tighter liquidity gate; sub-500 OI = wide spreads, poor fills
 _MAX_STRIKE_SPREAD    = 2      # evaluate ATM ± this many strikes for ranking
 _MIN_SL_BUFFER        = 1.0    # minimum ₹ gap between entry and SL; 25% of ₹4 option = ₹1.00 buffer — adequate for NSE tick size
