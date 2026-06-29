@@ -54,13 +54,27 @@ export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
   const [foOnly, setFoOnly] = useState(true);
+  const [dedupByTicker, setDedupByTicker] = useState(true);
   const [traceSignalId, setTraceSignalId] = useState<string | null>(null);
   const { data, isLoading, isError } = useSignals(stateFilter ? { state: stateFilter } : {});
   const { approve, reject } = useSignalMutations();
 
-  const signals = foOnly
+  // API returns signals sorted newest-first; keep only the first occurrence per ticker
+  // so repeated signals for the same stock (e.g. FORTIS PE 950 ×4) collapse to one row.
+  function deduplicate(list: Signal[]): Signal[] {
+    const seen = new Set<string>();
+    return list.filter((s) => {
+      const key = `${s.symbol}:${s.option_type ?? ""}:${s.option_strike ?? ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  const rawSignals = foOnly
     ? (data?.signals ?? []).filter((s) => s.option_type != null)
     : (data?.signals ?? []);
+  const signals = dedupByTicker ? deduplicate(rawSignals) : rawSignals;
 
   const columns: ColumnDef<Signal>[] = [
     {
@@ -244,10 +258,10 @@ export function SignalsView() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-medium text-muted-foreground">
-          {foOnly ? withContractCount : totalCount} signals
-          {foOnly && totalCount > withContractCount && (
+          {signals.length} signals
+          {dedupByTicker && rawSignals.length > signals.length && (
             <span className="ml-2 text-xs text-muted-foreground/60">
-              ({totalCount - withContractCount} without contract hidden)
+              ({rawSignals.length - signals.length} duplicates hidden)
             </span>
           )}
         </h2>
@@ -262,6 +276,17 @@ export function SignalsView() {
             )}
           >
             {foOnly ? "F&O Only" : "All Signals"}
+          </button>
+          <button
+            onClick={() => setDedupByTicker((v) => !v)}
+            className={cn(
+              "text-xs px-3 py-1 rounded border font-medium",
+              dedupByTicker
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border hover:bg-muted text-muted-foreground"
+            )}
+          >
+            {dedupByTicker ? "1 per Stock" : "All Dupes"}
           </button>
           <div className="w-px bg-border" />
           {(["RISK_PENDING", "RISK_APPROVED", "RISK_REJECTED", "EXPIRED", "EXECUTED"] as const).map((s) => (

@@ -2,7 +2,7 @@ version: "1.0"
 signal:
   ttl_minutes: 15
   market_close_time: "15:15:00"
-  dedup_ttl_minutes: 30
+  dedup_ttl_minutes: 240
   gate:
     min_score: 70       # Grade A only — score 60-69 (Grade B) not reliable for intraday options
     min_confidence: 55  # at score 70-83 max achievable confidence is 55-62 (no win-rate history)
