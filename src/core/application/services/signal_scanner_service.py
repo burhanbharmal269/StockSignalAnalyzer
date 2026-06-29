@@ -839,7 +839,7 @@ class SignalScannerService:
                 signals_rejected=rejected,
                 signals_gated=gated,
                 india_vix=india_vix,
-                market_context=market_ctx.regime.value if market_ctx else None,
+                market_context=market_ctx.nifty_regime if market_ctx else None,
                 execution_mode=exec_mode,
             )
 
