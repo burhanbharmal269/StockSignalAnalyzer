@@ -623,7 +623,7 @@ function FreezeTab() {
     queryKey: ["platform-readiness"],
     queryFn: operationsService.getReadiness,
   });
-  const freeze = data?.components?.architecture_freeze;
+  const freeze = data?.components?.architecture_freeze as Record<string, unknown> | undefined;
 
   return (
     <div className="space-y-4">
@@ -635,14 +635,14 @@ function FreezeTab() {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <span className="text-muted-foreground">Frozen since: </span>
-            <span className="font-medium">{freeze?.freeze_date ?? "2026-06-27"}</span>
+            <span className="font-medium">{String(freeze?.freeze_date ?? "2026-06-27")}</span>
           </div>
           <div>
             <span className="text-muted-foreground">Phase: </span>
-            <span className="font-medium">{freeze?.freeze_phase ?? "Phase 24"}</span>
+            <span className="font-medium">{String(freeze?.freeze_phase ?? "Phase 24")}</span>
           </div>
         </div>
-        <p className="mt-3 text-sm text-muted-foreground">{freeze?.detail}</p>
+        <p className="mt-3 text-sm text-muted-foreground">{String(freeze?.detail ?? "")}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
