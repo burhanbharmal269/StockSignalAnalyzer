@@ -166,8 +166,14 @@ class SignalOutcomeTrackerService:
                 }
             return None
 
-        ltps = [float(s["ltp"]) for s in snapshots]
-        timestamps = [s["captured_at"] for s in snapshots]
+        # Filter zero/null LTPs — they represent poller misses (no trade data returned
+        # from API at that timestamp), not a real option price of ₹0.
+        valid_snaps = [(float(s["ltp"]), s["captured_at"]) for s in snapshots if float(s.get("ltp") or 0) > 0]
+        if len(valid_snaps) < 2:
+            return None
+        ltps, timestamps = zip(*valid_snaps)
+        ltps = list(ltps)
+        timestamps = list(timestamps)
         if timestamps[0].tzinfo is None:
             timestamps = [t.replace(tzinfo=UTC) for t in timestamps]
 
