@@ -794,6 +794,7 @@ class SignalScannerService:
             "no_contract", "wall_too_close", "obv_against_trend",
             "stale_candles",
         })
+        gate_counts: dict[str, int] = {}
         results  = await asyncio.gather(
             *[
                 self._process_symbol_sem(sym, semaphore, india_vix, market_ctx, event_cache, portfolio_ctx)
@@ -814,15 +815,26 @@ class SignalScannerService:
                 rejected += 1
             elif res in _GATE_OUTCOMES:
                 gated += 1
+                gate_counts[res] = gate_counts.get(res, 0) + 1
             else:
                 errors += 1
 
         _cycle_dur = time.monotonic() - _cycle_start
+        # Build per-gate breakdown for diagnostics (only show gates that fired)
+        _gate_detail = " ".join(f"{g}={n}" for g, n in sorted(gate_counts.items()) if n > 0)
         _log.info(
-            "signal_scanner.cycle_summary accepted=%d rejected=%d gated=%d errors=%d candidates=%d duration_secs=%.1f "
-            "(gated=pre-engine filters: thin_vol/rsi/macd/iv/no_contract/etc)",
-            accepted, rejected, gated, errors, len(candidates), _cycle_dur,
+            "signal_scanner.cycle_summary accepted=%d rejected=%d gated=%d errors=%d "
+            "candidates=%d duration_secs=%.1f gates=[%s]",
+            accepted, rejected, gated, errors, len(candidates), _cycle_dur, _gate_detail,
         )
+        # Alert when stale_candles dominates — indicates Kite historical API failure
+        _stale = gate_counts.get("stale_candles", 0)
+        if _stale > len(candidates) * 0.5:
+            _log.warning(
+                "signal_scanner.stale_candles_dominant stale=%d/%d — "
+                "Kite historical data fetch likely failing; candles are from a prior trading day",
+                _stale, len(candidates),
+            )
 
         if self._scan_metrics is not None:
             exec_mode: str | None = None
@@ -909,7 +921,7 @@ class SignalScannerService:
         try:
             await self._history.fetch_and_store(symbol, "15m")
         except Exception as _fe:
-            _log.debug("signal_scanner.candle_fetch_failed symbol=%s: %s", symbol, _fe)
+            _log.warning("signal_scanner.candle_fetch_failed symbol=%s: %s", symbol, _fe)
 
         try:
             candles = await self._history.get_latest(symbol, "15m", _CANDLE_LIMIT)

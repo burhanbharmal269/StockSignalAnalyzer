@@ -69,6 +69,7 @@ from core.presentation.api.v1.routers.research_router import router as research_
 from core.presentation.api.v1.routers.platform_router import router as platform_router
 from core.presentation.api.v1.routers.exit_intelligence_router import router as exit_intelligence_router
 from core.presentation.api.v1.routers.experiment_router import router as experiment_router
+from core.presentation.api.v1.routers.trade_management_router import router as trade_management_router
 
 logger = get_logger(__name__)
 
@@ -406,6 +407,7 @@ def create_app() -> FastAPI:
             "core.presentation.api.v1.routers.exit_intelligence_router",
             "core.presentation.api.v1.routers.experiment_router",
             "core.presentation.api.v1.routers.platform_router",
+            "core.presentation.api.v1.routers.trade_management_router",
         ]
     )
     app.include_router(health_router)
@@ -442,6 +444,7 @@ def create_app() -> FastAPI:
     app.include_router(platform_router, prefix="/api/v1")
     app.include_router(exit_intelligence_router, prefix="/api/v1")
     app.include_router(experiment_router, prefix="/api/v1")
+    app.include_router(trade_management_router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics_endpoint() -> Response:

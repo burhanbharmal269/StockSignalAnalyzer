@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.application.services.market_data.historical_data_service import HistoricalDataService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
+    from core.application.services.trade_management_service import TradeManagementService
 
 _log = logging.getLogger(__name__)
 
@@ -47,9 +48,11 @@ class SignalOutcomeTrackerService:
         self,
         analytics_svc: "SignalAnalyticsService",
         historical_svc: "HistoricalDataService",
+        tmi_svc: "TradeManagementService | None" = None,
     ) -> None:
         self._analytics = analytics_svc
         self._history   = historical_svc
+        self._tmi       = tmi_svc
         self._running   = False
 
     async def run(self) -> None:
@@ -86,6 +89,12 @@ class SignalOutcomeTrackerService:
                     **result,
                 )
                 updated += 1
+                # Trigger TMI classification when signal settles (not still OPEN)
+                if self._tmi and result.get("outcome") in ("WIN", "LOSS", "EXPIRED", "PARTIAL"):
+                    try:
+                        await self._tmi.classify_and_update(record["id"])
+                    except Exception:
+                        _log.debug("tmi.classify_failed id=%s", record["id"])
             except Exception as exc:
                 errors += 1
                 _log.debug(

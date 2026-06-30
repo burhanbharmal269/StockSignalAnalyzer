@@ -1232,6 +1232,15 @@ class ApplicationContainer(containers.DeclarativeContainer):
         qualification_service=signal_qualification_service,
     )
 
+    # Defined here (before signal_outcome_tracker_service) so it can be wired in.
+    trade_management_service = providers.Singleton(
+        __import__(
+            "core.application.services.trade_management_service",
+            fromlist=["TradeManagementService"],
+        ).TradeManagementService,
+        session_factory=db_session_factory,
+    )
+
     signal_outcome_tracker_service = providers.Singleton(
         __import__(
             "core.application.services.signal_outcome_tracker_service",
@@ -1239,6 +1248,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ).SignalOutcomeTrackerService,
         analytics_svc=signal_analytics_service,
         historical_svc=historical_data_service,
+        tmi_svc=trade_management_service,
     )
 
     strategy_performance_service = providers.Singleton(
@@ -1740,3 +1750,4 @@ class ApplicationContainer(containers.DeclarativeContainer):
         portfolio_svc=portfolio_intelligence_service,
         strategy_evo_svc=strategy_evolution_service,
     )
+

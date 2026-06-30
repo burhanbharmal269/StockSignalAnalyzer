@@ -462,10 +462,16 @@ class SignalAnalyticsService:
             await db.commit()
 
     async def get_pending_outcome_check(self, max_age_days: int = 5) -> list[dict]:
-        """Return accepted signals not yet outcome-checked, within max_age_days."""
-        cutoff = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        """Return accepted signals that need outcome checking within max_age_days.
+
+        Includes signals with no outcome yet (NULL) AND signals still OPEN that
+        haven't been rechecked in the last 14 minutes. OPEN signals must be tracked
+        continuously so current_return_pct/MFE/MAE stay current throughout the day.
+        """
         from datetime import timedelta
+        cutoff = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         cutoff -= timedelta(days=max_age_days)
+        recheck_cutoff = datetime.now(UTC) - timedelta(minutes=14)
         async with self._sf() as db:
             result = await db.execute(
                 text("""
@@ -475,12 +481,18 @@ class SignalAnalyticsService:
                            option_strike, option_type, option_expiry
                     FROM signal_analytics
                     WHERE was_accepted = true
-                      AND outcome IS NULL
                       AND created_at >= :cutoff
+                      AND (
+                          outcome IS NULL
+                          OR (outcome = 'OPEN' AND (
+                              outcome_checked_at IS NULL
+                              OR outcome_checked_at < :recheck_cutoff
+                          ))
+                      )
                     ORDER BY created_at
                     LIMIT 200
                 """),
-                {"cutoff": cutoff},
+                {"cutoff": cutoff, "recheck_cutoff": recheck_cutoff},
             )
             return [dict(r._mapping) for r in result.fetchall()]
 
