@@ -63,6 +63,21 @@ class MarketCloseExitService:
 
     async def start(self) -> None:
         _log.info("market_close_exit.started cutoff_ist=%s", self._cutoff)
+        # On startup, expire any open signals from previous trading days.
+        # This handles the case where the app was not running at market close
+        # (e.g. Docker restart after hours) — signals would otherwise stay
+        # RISK_APPROVED indefinitely across days.
+        try:
+            stale = await self._expire_previous_day_signals()
+            if stale:
+                _log.warning(
+                    "market_close_exit.startup_cleanup expired_stale=%d — "
+                    "signals from prior trading days expired on startup",
+                    stale,
+                )
+        except Exception:
+            _log.exception("market_close_exit.startup_cleanup_error")
+
         while not self._stop_event.is_set():
             try:
                 await self._check_and_fire()
@@ -102,10 +117,25 @@ class MarketCloseExitService:
         )
 
     async def _expire_open_signals(self) -> int:
+        return await self._expire_signals_where(None)
+
+    async def _expire_previous_day_signals(self) -> int:
+        """Expire open signals created before today — catches missed EOD sweeps."""
+        today_utc = datetime.now(UTC).date()
+        # Signals created before today (UTC) are from prior trading sessions
+        from sqlalchemy import cast
+        from sqlalchemy import Date as SADate
+        cutoff = datetime.combine(today_utc, time(0, 0, 0)).replace(tzinfo=UTC)
+        return await self._expire_signals_where(cutoff)
+
+    async def _expire_signals_where(self, created_before_utc: "datetime | None") -> int:
+        from sqlalchemy import and_
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(SignalOrm).where(SignalOrm.state.in_(_OPEN_STATES))
-            )
+            where_clause = SignalOrm.state.in_(_OPEN_STATES)
+            if created_before_utc is not None:
+                where_clause = and_(where_clause, SignalOrm.created_at < created_before_utc)
+
+            result = await session.execute(select(SignalOrm).where(where_clause))
             signals = result.scalars().all()
             if not signals:
                 return 0
