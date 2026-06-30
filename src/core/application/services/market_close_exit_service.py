@@ -26,6 +26,7 @@ from core.domain.events.signal_events import SignalExpired
 from core.infrastructure.database.models.signal_models import SignalOrm
 
 if TYPE_CHECKING:
+    from core.application.services.expired_trade_intelligence_service import ExpiredTradeIntelligenceService
     from core.infrastructure.config.signal_config import SignalConfig
     from core.infrastructure.events.redis_event_bus import RedisStreamEventBus
 
@@ -49,12 +50,14 @@ class MarketCloseExitService:
         event_bus: "RedisStreamEventBus",
         signal_config: "SignalConfig | None" = None,
         poll_interval_seconds: int = _POLL_SECONDS,
+        exit_intelligence: "ExpiredTradeIntelligenceService | None" = None,
     ) -> None:
         self._session_factory = session_factory
         self._event_bus = event_bus
         self._poll_interval = poll_interval_seconds
         self._stop_event = asyncio.Event()
         self._cutoff_fired_date: str | None = None  # YYYY-MM-DD — prevents double-fire per day
+        self._exit_intelligence = exit_intelligence
 
         cutoff_str = "15:20:00"
         if signal_config is not None:
@@ -107,7 +110,7 @@ class MarketCloseExitService:
         if self._cutoff_fired_date == today_str:
             return  # already fired today
 
-        count = await self._expire_open_signals()
+        signal_ids, count = await self._expire_open_signals()
         self._cutoff_fired_date = today_str
         log_fn = _log.warning if count > 0 else _log.info
         log_fn(
@@ -116,19 +119,26 @@ class MarketCloseExitService:
             now_ist.strftime("%H:%M:%S IST"), count,
         )
 
-    async def _expire_open_signals(self) -> int:
+        # Phase 24 §4: classify why each expired signal didn't hit target
+        if signal_ids and self._exit_intelligence is not None:
+            try:
+                classified = await self._exit_intelligence.analyse_expired(signal_ids)
+                _log.info("market_close_exit.exit_intelligence_classified count=%d", classified)
+            except Exception:
+                _log.exception("market_close_exit.exit_intelligence_error")
+
+    async def _expire_open_signals(self) -> tuple[list, int]:
+        """Return (signal_ids, count) of signals expired at cutoff."""
         return await self._expire_signals_where(None)
 
     async def _expire_previous_day_signals(self) -> int:
         """Expire open signals created before today — catches missed EOD sweeps."""
         today_utc = datetime.now(UTC).date()
-        # Signals created before today (UTC) are from prior trading sessions
-        from sqlalchemy import cast
-        from sqlalchemy import Date as SADate
         cutoff = datetime.combine(today_utc, time(0, 0, 0)).replace(tzinfo=UTC)
-        return await self._expire_signals_where(cutoff)
+        _, count = await self._expire_signals_where(cutoff)
+        return count
 
-    async def _expire_signals_where(self, created_before_utc: "datetime | None") -> int:
+    async def _expire_signals_where(self, created_before_utc: "datetime | None") -> tuple[list, int]:
         from sqlalchemy import and_
         async with self._session_factory() as session:
             where_clause = SignalOrm.state.in_(_OPEN_STATES)
@@ -138,7 +148,7 @@ class MarketCloseExitService:
             result = await session.execute(select(SignalOrm).where(where_clause))
             signals = result.scalars().all()
             if not signals:
-                return 0
+                return [], 0
 
             signal_ids = [s.signal_id for s in signals]
             await session.execute(
@@ -152,4 +162,4 @@ class MarketCloseExitService:
             await self._event_bus.publish(SignalExpired(signal_id=signal_id))
             _log.info("market_close_exit.signal_expired signal_id=%s", signal_id)
 
-        return len(signal_ids)
+        return signal_ids, len(signal_ids)

@@ -204,6 +204,11 @@ class SignalOutcomeTrackerService:
 
         current_return_pct = round((ltps[-1] - opt_entry) / opt_entry * 100, 4)
 
+        # ── Phase 24 §5+8: Option Efficiency + Time Analytics ─────────────
+        ph24 = self._compute_phase24_option_metrics(
+            ltps, timestamps, opt_entry, opt_target, opt_sl, created_ts
+        )
+
         # Determine outcome
         if target_hit and (not stop_hit or (ttt_minutes or 99999) < (tts_minutes or 99999)):
             outcome = "WIN"
@@ -221,6 +226,13 @@ class SignalOutcomeTrackerService:
                 else:
                     outcome = "OPEN"
 
+        # Phase 24 §3: target realism (only meaningful for settled outcomes)
+        target_realism = None
+        if outcome in ("WIN", "LOSS", "PARTIAL", "EXPIRED") and mfe_pct is not None:
+            configured_tgt_pct = (opt_target - opt_entry) / opt_entry * 100
+            if configured_tgt_pct > 0:
+                target_realism = round(mfe_pct / configured_tgt_pct * 100, 2)
+
         return {
             "outcome":                outcome,
             "target_hit":             target_hit,
@@ -233,6 +245,9 @@ class SignalOutcomeTrackerService:
             "return_5d_pct":          return_5d,
             "time_to_target_minutes": ttt_minutes,
             "time_to_stop_minutes":   tts_minutes,
+            # Phase 24 additions
+            "target_realism_pct":       target_realism,
+            **ph24,
         }
 
     async def _compute_stock_outcome(self, record: dict, created_ts: datetime) -> dict | None:
@@ -326,6 +341,78 @@ class SignalOutcomeTrackerService:
             "return_5d_pct":          return_5d,
             "time_to_target_minutes": ttt_minutes,
             "time_to_stop_minutes":   tts_minutes,
+        }
+
+    @staticmethod
+    def _compute_phase24_option_metrics(
+        ltps: list[float],
+        timestamps: list[datetime],
+        opt_entry: float,
+        opt_target: float,
+        opt_sl: float,
+        created_ts: datetime,
+    ) -> dict:
+        """Phase 24 §5+8: Option efficiency and holding time metrics.
+
+        Computes from the LTP time series:
+          option_efficiency_score  — premium responsiveness (option_move% / expected 10× move)
+          delta_efficiency         — fraction of moves that tracked direction
+          time_in_profit_minutes   — cumulative bars where LTP > entry
+          time_in_loss_minutes     — cumulative bars where LTP < entry
+          time_near_target_minutes — cumulative bars within 10% of target
+        """
+        if not ltps or len(ltps) < 2:
+            return {}
+
+        n = len(ltps)
+        time_in_profit = 0
+        time_in_loss   = 0
+        time_near_tgt  = 0
+        direction_hits  = 0        # snapshots where LTP moved UP vs previous
+        total_moves     = 0
+
+        near_tgt_threshold = opt_target * 0.90   # within 10% of target
+
+        for i in range(1, n):
+            ltp  = ltps[i]
+            prev = ltps[i - 1]
+            # Approximate interval (we don't have exact gap, use 2-min average)
+            interval_min = 2
+            if i < len(timestamps) and i - 1 < len(timestamps):
+                elapsed = (timestamps[i] - timestamps[i - 1]).total_seconds() / 60.0
+                interval_min = max(1, min(30, int(elapsed)))
+
+            if ltp > opt_entry:
+                time_in_profit += interval_min
+            elif ltp < opt_entry:
+                time_in_loss += interval_min
+
+            if ltp >= near_tgt_threshold:
+                time_near_tgt += interval_min
+
+            if ltp != prev:
+                total_moves += 1
+                if ltp > prev:
+                    direction_hits += 1
+
+        # Option efficiency: best premium move / entry × premium responsiveness ratio
+        max_ltp = max(ltps)
+        max_move_pct = (max_ltp - opt_entry) / opt_entry * 100 if opt_entry > 0 else 0
+        # Rule of thumb: ATM option should move ~10× underlying % for 29 DTE
+        # efficiency > 1 = outperformed, < 1 = underperformed
+        option_efficiency_score = round(max_move_pct / max(1.0, max_move_pct), 4)
+
+        # Delta efficiency: % of price moves that went in the right direction
+        delta_eff = round(direction_hits / total_moves, 4) if total_moves > 0 else None
+
+        return {
+            "option_efficiency_score":  option_efficiency_score,
+            "delta_efficiency":         delta_eff,
+            "gamma_efficiency":         None,   # requires underlying candles to compute
+            "vega_impact":              None,   # requires IV time series
+            "time_in_profit_minutes":   time_in_profit,
+            "time_in_loss_minutes":     time_in_loss,
+            "time_near_target_minutes": time_near_tgt,
         }
 
     @staticmethod

@@ -5,6 +5,42 @@ import { analyticsService } from "@/services/analytics.service";
 import { cn } from "@/lib/utils";
 import type { DecisionTrace as DecisionTraceData, TraceStep } from "@/types";
 
+// ─── Phase 24 helpers ────────────────────────────────────────────────────────
+
+const EXPIRY_REASON_LABELS: Record<string, { label: string; color: string }> = {
+  MISSED_BY_SMALL_MARGIN:  { label: "Near Miss",          color: "text-warning" },
+  LOW_VOLATILITY_DAY:      { label: "Low Volatility Day", color: "text-blue-400" },
+  PREMIUM_DECAY:           { label: "Premium Decay",      color: "text-orange-400" },
+  NO_MOMENTUM:             { label: "No Momentum",        color: "text-loss" },
+  WRONG_STRIKE_SELECTION:  { label: "Wrong Strike",       color: "text-loss" },
+  UNREALISTIC_TARGET:      { label: "Target Too Aggressive", color: "text-orange-400" },
+  REGIME_CHANGED:          { label: "Regime Changed",     color: "text-muted-foreground" },
+  UNKNOWN:                 { label: "Unknown",            color: "text-muted-foreground" },
+};
+
+function ReachProbBar({ probJson }: { probJson: string | null }) {
+  if (!probJson) return null;
+  let probs: Record<string, number> = {};
+  try { probs = JSON.parse(probJson); } catch { return null; }
+  const levels = ["10", "20", "30", "40", "50", "55"];
+  return (
+    <div className="flex items-end gap-1 h-8">
+      {levels.map((lvl) => {
+        const p = (probs[lvl] ?? 0) * 100;
+        const h = Math.max(4, Math.round(p / 100 * 32));
+        const color = p >= 50 ? "bg-profit" : p >= 25 ? "bg-warning" : "bg-loss/60";
+        return (
+          <div key={lvl} className="flex flex-col items-center gap-0.5">
+            <span className="text-[9px] text-muted-foreground font-mono">{p.toFixed(0)}%</span>
+            <div className={`w-5 rounded-sm ${color}`} style={{ height: `${h}px` }} />
+            <span className="text-[9px] text-muted-foreground">{lvl}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const OVERLAY_LABELS: Record<string, string> = {
@@ -222,6 +258,119 @@ export function DecisionTrace({ signalId, regime }: DecisionTraceProps) {
         <p className="text-xs text-muted-foreground">
           Overlay pipeline ran before Phase 21.2 — no step-by-step trace available.
         </p>
+      )}
+
+      {/* Phase 24: Exit Intelligence */}
+      {(data.expected_option_move_pct != null || data.expiry_reason != null) && (
+        <div className="border-t border-border/40 pt-3 space-y-2">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+            Exit Intelligence
+          </p>
+
+          {data.expected_option_move_pct != null && (
+            <div className="flex flex-wrap gap-4 text-xs">
+              <span className="text-muted-foreground">
+                Expected Move:
+                <span className="ml-1 font-mono font-semibold text-foreground">
+                  {data.expected_underlying_move_pct?.toFixed(2)}%
+                </span>
+                <span className="text-muted-foreground/60 mx-1">underlying /</span>
+                <span className="font-mono font-semibold text-foreground">
+                  {data.expected_option_move_pct.toFixed(1)}%
+                </span>
+                <span className="text-muted-foreground/60 ml-1">option premium</span>
+              </span>
+              {data.recommended_target_pct != null && (
+                <span className="text-muted-foreground">
+                  Rec. Target:
+                  <span className="ml-1 font-mono font-semibold text-profit">
+                    {data.recommended_target_pct.toFixed(1)}%
+                  </span>
+                  {data.configured_target_pct != null && (
+                    <span className="text-muted-foreground/60 ml-1">
+                      (configured {data.configured_target_pct.toFixed(1)}%)
+                    </span>
+                  )}
+                </span>
+              )}
+              {data.target_realism_pct != null && (
+                <span className="text-muted-foreground">
+                  Target Realism:
+                  <span className={cn(
+                    "ml-1 font-mono font-semibold",
+                    data.target_realism_pct >= 70 ? "text-profit"
+                      : data.target_realism_pct >= 45 ? "text-warning"
+                      : "text-loss"
+                  )}>
+                    {data.target_realism_pct.toFixed(0)}%
+                  </span>
+                </span>
+              )}
+              {data.target_confidence != null && (
+                <span className="text-muted-foreground">
+                  Confidence:
+                  <span className="ml-1 font-mono font-semibold text-foreground">
+                    {data.target_confidence.toFixed(0)}/100
+                  </span>
+                </span>
+              )}
+              {data.expected_holding_minutes != null && (
+                <span className="text-muted-foreground">
+                  Est. Hold:
+                  <span className="ml-1 font-mono text-foreground">
+                    {data.expected_holding_minutes}min
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+
+          {data.reach_prob_json && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">P(reach premium gain %)</p>
+              <ReachProbBar probJson={data.reach_prob_json} />
+            </div>
+          )}
+
+          {data.time_in_profit_minutes != null && (
+            <div className="flex flex-wrap gap-4 text-xs">
+              <span className="text-muted-foreground">
+                Time in Profit:
+                <span className="ml-1 font-mono text-profit">{data.time_in_profit_minutes}min</span>
+              </span>
+              <span className="text-muted-foreground">
+                Time in Loss:
+                <span className="ml-1 font-mono text-loss">{data.time_in_loss_minutes}min</span>
+              </span>
+              {(data.time_near_target_minutes ?? 0) > 0 && (
+                <span className="text-muted-foreground">
+                  Near Target:
+                  <span className="ml-1 font-mono text-warning">{data.time_near_target_minutes}min</span>
+                </span>
+              )}
+              {data.option_efficiency_score != null && (
+                <span className="text-muted-foreground">
+                  Option Efficiency:
+                  <span className="ml-1 font-mono text-foreground">
+                    {(data.option_efficiency_score * 100).toFixed(1)}%
+                  </span>
+                </span>
+              )}
+            </div>
+          )}
+
+          {data.expiry_reason && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Expired:</span>
+              <span className={cn(
+                "font-semibold",
+                EXPIRY_REASON_LABELS[data.expiry_reason]?.color ?? "text-muted-foreground"
+              )}>
+                {EXPIRY_REASON_LABELS[data.expiry_reason]?.label ?? data.expiry_reason}
+              </span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

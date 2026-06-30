@@ -8,7 +8,7 @@ import {
   Activity, FileText, Settings, LineChart, Target,
   CandlestickChart, Sparkles, Bot, Newspaper, FlaskConical, Filter, Brain,
   PieChart, BookOpen, Microscope, MonitorDot, CalendarDays, ShieldCheck,
-  ClipboardList,
+  ClipboardList, TestTube2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
@@ -19,7 +19,7 @@ const ICON_MAP = {
   Activity, FileText, Settings, LineChart, Target,
   CandlestickChart, Sparkles, Bot, Newspaper, FlaskConical, Filter, Brain,
   PieChart, BookOpen, Microscope, MonitorDot, CalendarDays, ShieldCheck,
-  ClipboardList,
+  ClipboardList, TestTube2,
 } as const;
 
 const NAV_ITEMS = [
@@ -53,6 +53,7 @@ const NAV_ITEMS = [
   { label: "Weekly Report", href: "/weekly-report", icon: "CalendarDays" },
   { label: "Validation", href: "/validation", icon: "ShieldCheck" },
   { label: "Operations", href: "/operations", icon: "ClipboardList" },
+  { label: "Experiments", href: "/experiments", icon: "TestTube2" },
 ] as const;
 
 export function Sidebar() {

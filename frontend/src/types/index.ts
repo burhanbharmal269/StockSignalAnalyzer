@@ -159,6 +159,25 @@ export interface SignalOverlay {
   adjusted_score: number | null;
   was_accepted: boolean | null;
   rejection_reason: string | null;
+  // Phase 24 Exit Intelligence
+  expected_underlying_move_pct: number | null;
+  expected_option_move_pct: number | null;
+  expected_holding_minutes: number | null;
+  reach_prob_json: string | null;
+  recommended_target_pct: number | null;
+  recommended_stop_pct: number | null;
+  recommended_holding_minutes: number | null;
+  target_confidence: number | null;
+  configured_target_pct: number | null;
+  configured_sl_pct: number | null;
+  target_realism_pct: number | null;
+  expiry_reason: string | null;
+  expiry_snapshot_json: string | null;
+  option_efficiency_score: number | null;
+  delta_efficiency: number | null;
+  time_in_profit_minutes: number | null;
+  time_in_loss_minutes: number | null;
+  time_near_target_minutes: number | null;
 }
 
 // ─── Validation (Phase 22) ───────────────────────────────────────────────────

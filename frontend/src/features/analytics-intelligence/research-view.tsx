@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import apiClient from "@/lib/api-client";
 import {
   useCohorts,
   useEdges,
@@ -10,6 +12,48 @@ import {
   useReplayBackfill,
   useRecommendations,
 } from "@/hooks/use-analytics-intelligence";
+
+// ─── Exit Intelligence hooks ─────────────────────────────────────────────────
+
+function useExitSummary(days: number) {
+  return useQuery({
+    queryKey: ["exit-intelligence-summary", days],
+    queryFn: () => apiClient.get(`/exit-intelligence/summary?days=${days}`).then((r) => r.data as Record<string, unknown>),
+    staleTime: 120_000,
+  });
+}
+
+function useExitTargetDist(days: number) {
+  return useQuery({
+    queryKey: ["exit-intelligence-target-dist", days],
+    queryFn: () => apiClient.get(`/exit-intelligence/target-distribution?days=${days}`).then((r) => r.data as Record<string, unknown>),
+    staleTime: 120_000,
+  });
+}
+
+function useExitExpiryAnalysis(days: number) {
+  return useQuery({
+    queryKey: ["exit-intelligence-expiry", days],
+    queryFn: () => apiClient.get(`/exit-intelligence/expiry-analysis?days=${days}`).then((r) => r.data as Record<string, unknown>),
+    staleTime: 120_000,
+  });
+}
+
+function useExitMfeCalibration(days: number, groupBy: string) {
+  return useQuery({
+    queryKey: ["exit-intelligence-mfe", days, groupBy],
+    queryFn: () => apiClient.get(`/exit-intelligence/mfe-calibration?days=${days}&group_by=${groupBy}`).then((r) => r.data as Record<string, unknown>),
+    staleTime: 120_000,
+  });
+}
+
+function useExitRegimeTargets(days: number) {
+  return useQuery({
+    queryKey: ["exit-intelligence-regime", days],
+    queryFn: () => apiClient.get(`/exit-intelligence/regime-targets?days=${days}`).then((r) => r.data as Record<string, unknown>),
+    staleTime: 120_000,
+  });
+}
 import type {
   CohortEntry,
   EdgeEntry,
@@ -215,10 +259,244 @@ function RecommendationCard({ rec }: { rec: Recommendation }) {
   );
 }
 
+// ─── Exit Intelligence sub-components ────────────────────────────────────────
+
+type AnyQuery = { data: unknown; isLoading: boolean };
+
+function ExitSummaryCards({ data }: { data: Record<string, unknown> }) {
+  const status = data.calibration_status as string | undefined;
+  const statusColor = status === "WELL_CALIBRATED" ? "text-emerald-400"
+    : status === "SLIGHTLY_AGGRESSIVE" ? "text-amber-400" : "text-red-400";
+  const cards = [
+    { label: "Avg MFE",            value: data.avg_mfe_pct           != null ? `${data.avg_mfe_pct}%`           : "—" },
+    { label: "Configured Target",  value: data.avg_configured_target  != null ? `${data.avg_configured_target}%`  : "—" },
+    { label: "Recommended Target", value: data.avg_recommended_target != null ? `${data.avg_recommended_target}%` : "—" },
+    { label: "Target Realism",     value: data.avg_target_realism_pct != null ? `${data.avg_target_realism_pct}%` : "—" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {cards.map((c) => (
+        <div key={c.label} className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-4">
+          <p className="text-xs text-slate-400 uppercase tracking-wider">{c.label}</p>
+          <p className="mt-1 text-xl font-semibold text-slate-100">{c.value}</p>
+        </div>
+      ))}
+      <div className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-4 col-span-2 sm:col-span-1">
+        <p className="text-xs text-slate-400 uppercase tracking-wider">Calibration</p>
+        <p className={`mt-1 text-sm font-semibold ${statusColor}`}>
+          {status?.replace(/_/g, " ") ?? "—"}
+        </p>
+      </div>
+      <div className="rounded-lg border border-slate-700/60 bg-slate-800/50 p-4 col-span-2 sm:col-span-1">
+        <p className="text-xs text-slate-400 uppercase tracking-wider">Outcomes</p>
+        <p className="mt-1 text-xs text-slate-300 leading-relaxed">
+          {`Win ${data.target_hit_rate ?? "—"}% · Loss ${data.stop_hit_rate ?? "—"}% · Expired ${data.expired_rate ?? "—"}%`}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ExitTargetDistPanel({ data }: { data: Record<string, unknown> }) {
+  const rates = data.reach_rates as Record<string, { count: number; pct: number }> | undefined;
+  return (
+    <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">
+        Target Distribution — Reach Rates
+      </h3>
+      {rates && (
+        <div className="flex gap-3 flex-wrap items-end">
+          {Object.entries(rates).map(([lvl, r]) => {
+            const pct = r.pct ?? 0;
+            const barH = Math.max(8, Math.round((pct / 100) * 80));
+            const color = pct >= 50 ? "bg-emerald-500" : pct >= 25 ? "bg-amber-500" : "bg-red-500/70";
+            return (
+              <div key={lvl} className="flex flex-col items-center gap-1">
+                <span className="text-xs text-slate-300 font-mono">{pct.toFixed(0)}%</span>
+                <div className={`w-10 rounded-sm ${color}`} style={{ height: `${barH}px` }} />
+                <span className="text-[10px] text-slate-500">+{lvl}%</span>
+                <span className="text-[9px] text-slate-600">{r.count}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="mt-3 text-xs text-slate-500">
+        {`Total: ${(data.total_trades as number | undefined) ?? "—"} trades · Avg MFE ${(data.avg_mfe_pct as number | undefined) ?? "—"}% · Median ${(data.median_mfe_pct as number | undefined) ?? "—"}%`}
+      </p>
+    </div>
+  );
+}
+
+function ExitExpiryPanel({ data }: { data: Record<string, unknown> }) {
+  const reasons = data.reasons as Array<Record<string, unknown>> | undefined;
+  return (
+    <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+        Expiry Reason Analysis
+      </h3>
+      {reasons && reasons.length > 0 ? (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-700/60 text-xs text-slate-400">
+              <th className="pb-2 text-left">Reason</th>
+              <th className="pb-2 text-right">Count</th>
+              <th className="pb-2 text-right">%</th>
+              <th className="pb-2 text-right">Avg MFE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {reasons.map((r, i) => (
+              <tr key={i} className="border-b border-slate-700/30 last:border-0">
+                <td className="py-1.5 text-slate-300 text-xs">{String(r.reason).replace(/_/g, " ")}</td>
+                <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{String(r.count)}</td>
+                <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{`${String(r.pct ?? "—")}%`}</td>
+                <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.avg_mfe != null ? `${r.avg_mfe}%` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-sm text-slate-500">No expired trades classified yet</p>
+      )}
+    </div>
+  );
+}
+
+function ExitRegimePanel({ data }: { data: Record<string, unknown> }) {
+  const regimes = data.regimes as Array<Record<string, unknown>> | undefined;
+  return (
+    <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
+      <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
+        MFE by Market Regime
+      </h3>
+      {regimes && regimes.length > 0 ? (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-700/60 text-xs text-slate-400">
+              <th className="pb-2 text-left">Regime</th>
+              <th className="pb-2 text-right">n</th>
+              <th className="pb-2 text-right">Avg MFE</th>
+              <th className="pb-2 text-right">Win%</th>
+              <th className="pb-2 text-right">Realism</th>
+            </tr>
+          </thead>
+          <tbody>
+            {regimes.map((r, i) => (
+              <tr key={i} className="border-b border-slate-700/30 last:border-0">
+                <td className="py-1.5 text-slate-300 text-xs">{String(r.regime)}</td>
+                <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{String(r.trade_count)}</td>
+                <td className="py-1.5 text-right text-slate-300 text-xs font-mono font-semibold">{r.avg_mfe != null ? `${r.avg_mfe}%` : "—"}</td>
+                <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.target_hit_rate != null ? `${r.target_hit_rate}%` : "—"}</td>
+                <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.avg_target_realism != null ? `${r.avg_target_realism}%` : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-sm text-slate-500">No regime data yet</p>
+      )}
+    </div>
+  );
+}
+
+function ExitMfePanel({
+  data, isLoading, group, setGroup,
+}: {
+  data: Record<string, unknown> | undefined;
+  isLoading: boolean;
+  group: string;
+  setGroup: (g: "regime" | "symbol" | "dte_bucket" | "score_bucket") => void;
+}) {
+  const rows = data?.rows as Array<Record<string, unknown>> | undefined;
+  return (
+    <div className="rounded-xl border border-slate-700/60 bg-slate-800/40 p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">MFE Calibration</h3>
+        <div className="flex gap-1">
+          {(["regime", "symbol", "dte_bucket", "score_bucket"] as const).map((g) => (
+            <button key={g} onClick={() => setGroup(g)}
+              className={`rounded px-2 py-1 text-xs transition-colors ${group === g ? "bg-blue-600 text-white" : "bg-slate-700 text-slate-400 hover:text-slate-200"}`}>
+              {g.replace(/_/g, " ")}
+            </button>
+          ))}
+        </div>
+      </div>
+      {isLoading ? (
+        <p className="text-sm text-slate-500">Loading…</p>
+      ) : rows && rows.length > 0 ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-700/60 text-xs text-slate-400">
+                <th className="pb-2 text-left">Group</th>
+                <th className="pb-2 text-right">n</th>
+                <th className="pb-2 text-right">Avg MFE</th>
+                <th className="pb-2 text-right">Median</th>
+                <th className="pb-2 text-right">P95</th>
+                <th className="pb-2 text-right">Realism</th>
+                <th className="pb-2 text-right">Efficiency</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} className="border-b border-slate-700/30 last:border-0">
+                  <td className="py-1.5 text-slate-300 text-xs">{String(r.group_label)}</td>
+                  <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{String(r.trade_count)}</td>
+                  <td className="py-1.5 text-right text-slate-300 text-xs font-mono font-semibold">{r.avg_mfe != null ? `${r.avg_mfe}%` : "—"}</td>
+                  <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.median_mfe != null ? `${r.median_mfe}%` : "—"}</td>
+                  <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.p95_mfe != null ? `${r.p95_mfe}%` : "—"}</td>
+                  <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.avg_target_realism != null ? `${r.avg_target_realism}%` : "—"}</td>
+                  <td className="py-1.5 text-right text-slate-400 text-xs font-mono">{r.avg_efficiency != null ? String(r.avg_efficiency) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-500">No calibration data yet — needs settled signal outcomes</p>
+      )}
+    </div>
+  );
+}
+
+function ExitIntelligenceTab({
+  exitSummary, exitTargetDist, exitExpiry, exitMfe, exitRegime, exitMfeGroup, setExitMfeGroup,
+}: {
+  exitSummary: AnyQuery;
+  exitTargetDist: AnyQuery;
+  exitExpiry: AnyQuery;
+  exitMfe: AnyQuery;
+  exitRegime: AnyQuery;
+  exitMfeGroup: "regime" | "symbol" | "dte_bucket" | "score_bucket";
+  setExitMfeGroup: (g: "regime" | "symbol" | "dte_bucket" | "score_bucket") => void;
+}) {
+  const sumD  = exitSummary.data    ? exitSummary.data    as Record<string, unknown> : null;
+  const tdD   = exitTargetDist.data ? exitTargetDist.data as Record<string, unknown> : null;
+  const expD  = exitExpiry.data     ? exitExpiry.data     as Record<string, unknown> : null;
+  const regD  = exitRegime.data     ? exitRegime.data     as Record<string, unknown> : null;
+  const mfeD  = exitMfe.data        ? exitMfe.data        as Record<string, unknown> : undefined;
+  return (
+    <div className="space-y-6">
+      {sumD  && <ExitSummaryCards    data={sumD} />}
+      {tdD   && <ExitTargetDistPanel data={tdD}  />}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {expD && <ExitExpiryPanel data={expD} />}
+        {regD && <ExitRegimePanel data={regD} />}
+      </div>
+      <ExitMfePanel data={mfeD} isLoading={exitMfe.isLoading} group={exitMfeGroup} setGroup={setExitMfeGroup} />
+      <p className="text-xs text-slate-500 text-center">
+        Phase 24 Exit Intelligence — read-only analytics, never modifies strategy execution
+      </p>
+    </div>
+  );
+}
+
 export default function ResearchView() {
   const [lookback, setLookback] = useState(90);
-  const [tab, setTab] = useState<"cohorts" | "edges" | "clusters" | "replay" | "recommendations">("cohorts");
+  const [tab, setTab] = useState<"cohorts" | "edges" | "clusters" | "replay" | "recommendations" | "exit">("cohorts");
   const [cohortDim, setCohortDim] = useState<"score" | "confidence" | "mtf" | "regime" | "time_window" | "dte">("score");
+  const [exitMfeGroup, setExitMfeGroup] = useState<"regime" | "symbol" | "dte_bucket" | "score_bucket">("regime");
 
   const cohorts = useCohorts(lookback);
   const edges = useEdges(lookback);
@@ -227,6 +505,11 @@ export default function ResearchView() {
   const replayCoverage = useReplayCoverage();
   const replayBackfill = useReplayBackfill();
   const recommendations = useRecommendations(lookback);
+  const exitSummary = useExitSummary(lookback);
+  const exitTargetDist = useExitTargetDist(lookback);
+  const exitExpiry = useExitExpiryAnalysis(lookback);
+  const exitMfe = useExitMfeCalibration(lookback, exitMfeGroup);
+  const exitRegime = useExitRegimeTargets(lookback);
 
   const tabs = [
     { id: "cohorts",         label: "Cohorts" },
@@ -234,6 +517,7 @@ export default function ResearchView() {
     { id: "clusters",        label: "Clusters" },
     { id: "replay",          label: "Replay" },
     { id: "recommendations", label: "Recommendations" },
+    { id: "exit",            label: "Exit Intelligence" },
   ] as const;
 
   const cohortDims = ["score", "confidence", "mtf", "regime", "time_window", "dte"] as const;
@@ -445,6 +729,19 @@ export default function ResearchView() {
             Full replay viewer coming in a future phase.
           </p>
         </div>
+      )}
+
+      {/* Exit Intelligence */}
+      {tab === "exit" && (
+        <ExitIntelligenceTab
+          exitSummary={exitSummary}
+          exitTargetDist={exitTargetDist}
+          exitExpiry={exitExpiry}
+          exitMfe={exitMfe}
+          exitRegime={exitRegime}
+          exitMfeGroup={exitMfeGroup}
+          setExitMfeGroup={setExitMfeGroup}
+        />
       )}
 
       {/* Recommendations */}

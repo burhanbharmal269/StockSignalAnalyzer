@@ -1445,6 +1445,62 @@ class SignalScannerService:
         if len(_hist) > 5:
             _hist.pop(0)
 
+        # ── Phase 25 §2: Experiment A/B assignment — analytics only, never gates ──
+        _ab_assignment: dict = {}
+        if result.accepted and option_play is not None:
+            try:
+                from container import ApplicationContainer as _AC25
+                _exp_svc = _AC25.experiment_service()
+                _exp_id, _group = await _exp_svc.assign_signal(signal.signal_id)
+                if _exp_id:
+                    _ab_assignment = {"experiment_id": _exp_id, "ab_group": _group}
+            except Exception as _ab_exc:
+                _log.debug("signal_scanner.ab_assignment_failed symbol=%s: %s", symbol, _ab_exc)
+
+        # ── Phase 24 §1+2: Expected Move Engine — analytics only, never gates ──
+        _expected_move: dict = {}
+        if result.accepted and option_play is not None:
+            try:
+                from core.application.services.expected_move_engine import ExpectedMoveEngine
+                _close    = features.get("close") or req.entry_price or 0.0
+                _atr      = features.get("atr") or 0.0
+                _atr_pct  = (_atr / _close * 100) if _close > 0 else 0.0
+                _atr_rat  = features.get("atr_ratio") or 1.0
+                _iv_pct   = features.get("iv_percentile_proxy")
+                _dte      = None
+                if option_play.option_expiry:
+                    from datetime import date as _dt_date
+                    _exp = (option_play.option_expiry
+                            if isinstance(option_play.option_expiry, _dt_date)
+                            else _dt_date.fromisoformat(option_play.option_expiry[:10]))
+                    _dte = (_exp - _dt_date.today()).days
+                _em = ExpectedMoveEngine().compute(
+                    atr_pct=_atr_pct,
+                    india_vix=india_vix,
+                    iv_percentile=_iv_pct,
+                    delta=None,
+                    gamma=None,
+                    dte=_dte,
+                    underlying_price=float(_close),
+                    option_entry=float(option_play.entry),
+                    configured_target_pct=getattr(option_play, "_configured_target_pct", 0.55),
+                    configured_sl_pct=getattr(option_play, "_configured_sl_pct", 0.25),
+                    regime=str(regime),
+                    atr_ratio=float(_atr_rat),
+                )
+                _expected_move = {
+                    "expected_underlying_move_pct": _em.expected_underlying_move_pct,
+                    "expected_option_move_pct":     _em.expected_option_move_pct,
+                    "expected_holding_minutes":     _em.expected_holding_minutes,
+                    "reach_prob_json":              _em.reach_prob_json,
+                    "recommended_target_pct":       _em.recommended_target_pct,
+                    "recommended_stop_pct":         _em.recommended_stop_pct,
+                    "recommended_holding_minutes":  _em.recommended_holding_minutes,
+                    "target_confidence":            _em.target_confidence,
+                }
+            except Exception as _eme_exc:
+                _log.debug("signal_scanner.expected_move_failed symbol=%s: %s", symbol, _eme_exc)
+
         # ── TRACE 7: Signal analytics — always record (execution-mode independent) ──
         if self._analytics is not None:
             await self._analytics.record(
@@ -1456,7 +1512,7 @@ class SignalScannerService:
                 result=result,
                 features=features,
                 option_play=option_play,
-                overlay=attribution,
+                overlay={**attribution, **_expected_move, **_ab_assignment},
             )
 
         if result.accepted:

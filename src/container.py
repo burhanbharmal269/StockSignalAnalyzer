@@ -54,6 +54,10 @@ from core.application.services.signal_dedup_service import SignalDedupService
 from core.application.services.signal_engine_service import SignalEngineService
 from core.application.services.signal_scanner_service import SignalScannerService
 from core.application.services.account_state_seeder import AccountStateSeeder
+from core.application.services.expired_trade_intelligence_service import ExpiredTradeIntelligenceService
+from core.application.services.experiment_service import ExperimentService
+from core.application.services.change_governance_service import ChangeGovernanceService
+from core.application.services.weekly_research_review_service import WeeklyResearchReviewService
 from core.application.services.market_close_exit_service import MarketCloseExitService
 from core.application.services.signal_expiry_worker import SignalExpiryWorker
 from core.application.services.universe_filter_service import UniverseFilterService
@@ -1480,11 +1484,32 @@ class ApplicationContainer(containers.DeclarativeContainer):
         scan_metrics_svc=scan_metrics_service,
     )
 
+    expired_trade_intelligence_service: providers.Singleton[ExpiredTradeIntelligenceService] = providers.Singleton(
+        ExpiredTradeIntelligenceService,
+        session_factory=db_session_factory,
+    )
+
+    experiment_service: providers.Singleton[ExperimentService] = providers.Singleton(
+        ExperimentService,
+        session_factory=db_session_factory,
+    )
+
+    change_governance_service: providers.Singleton[ChangeGovernanceService] = providers.Singleton(
+        ChangeGovernanceService,
+        session_factory=db_session_factory,
+    )
+
+    weekly_research_review_service: providers.Singleton[WeeklyResearchReviewService] = providers.Singleton(
+        WeeklyResearchReviewService,
+        session_factory=db_session_factory,
+    )
+
     market_close_exit_service: providers.Singleton[MarketCloseExitService] = providers.Singleton(
         MarketCloseExitService,
         session_factory=db_session_factory,
         event_bus=event_bus,
         signal_config=signal_config,
+        exit_intelligence=expired_trade_intelligence_service,
     )
 
     option_chain_poller_service = providers.Singleton(

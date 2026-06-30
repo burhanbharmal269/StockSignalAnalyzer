@@ -18,6 +18,8 @@ import logging
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
+import core.application.services.platform_constants as _PLATFORM_CONSTANTS
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -178,6 +180,33 @@ class SignalAnalyticsService:
             "qualification_reason":    None,
             "qualification_version":   None,
             "qualification_timestamp": None,
+
+            # Phase 24 §1 — Expected Move Engine
+            "expected_underlying_move_pct": overlay.get("expected_underlying_move_pct") if overlay else None,
+            "expected_option_move_pct":     overlay.get("expected_option_move_pct")     if overlay else None,
+            "expected_holding_minutes":     overlay.get("expected_holding_minutes")     if overlay else None,
+            "reach_prob_json":              overlay.get("reach_prob_json")              if overlay else None,
+            # Phase 24 §2 — Dynamic Target Recommendation
+            "recommended_target_pct":      overlay.get("recommended_target_pct")       if overlay else None,
+            "recommended_stop_pct":        overlay.get("recommended_stop_pct")         if overlay else None,
+            "recommended_holding_minutes": overlay.get("recommended_holding_minutes")  if overlay else None,
+            "target_confidence":           overlay.get("target_confidence")            if overlay else None,
+            # Phase 24 §3 — Target Realism (configured values captured at signal time)
+            "configured_target_pct": (
+                round((float(option_play.target) - float(option_play.entry)) / float(option_play.entry) * 100, 4)
+                if option_play and option_play.entry and option_play.target else None
+            ),
+            "configured_sl_pct": (
+                round((float(option_play.entry) - float(option_play.sl)) / float(option_play.entry) * 100, 4)
+                if option_play and option_play.entry and option_play.sl else None
+            ),
+            # Phase 25 §5 — Strategy versioning (immutable fingerprint at signal creation)
+            "strategy_version": _PLATFORM_CONSTANTS.STRATEGY_VERSION,
+            "risk_version":     _PLATFORM_CONSTANTS.RISK_VERSION,
+            "target_version":   _PLATFORM_CONSTANTS.TARGET_VERSION,
+            # Phase 25 §2 — Experiment assignment (populated by caller via overlay)
+            "experiment_id":    overlay.get("experiment_id") if overlay else None,
+            "ab_group":         overlay.get("ab_group")      if overlay else None,
         }
 
         # Phase 23 §2 — signal qualification (pure research label, no pipeline effect)
@@ -217,7 +246,14 @@ class SignalAnalyticsService:
                         decision_trace_json, decision_version, overlay_version,
                         deployment_stage,
                         qualification_grade, qualification_reason,
-                        qualification_version, qualification_timestamp
+                        qualification_version, qualification_timestamp,
+                        expected_underlying_move_pct, expected_option_move_pct,
+                        expected_holding_minutes, reach_prob_json,
+                        recommended_target_pct, recommended_stop_pct,
+                        recommended_holding_minutes, target_confidence,
+                        configured_target_pct, configured_sl_pct,
+                        strategy_version, risk_version, target_version,
+                        experiment_id, ab_group
                     ) VALUES (
                         :signal_id, :ticker, :exchange, :direction, :strategy_type, :regime,
                         :sector, :is_index, :execution_mode,
@@ -239,7 +275,14 @@ class SignalAnalyticsService:
                         :decision_trace_json, :decision_version, :overlay_version,
                         :deployment_stage,
                         :qualification_grade, :qualification_reason,
-                        :qualification_version, :qualification_timestamp
+                        :qualification_version, :qualification_timestamp,
+                        :expected_underlying_move_pct, :expected_option_move_pct,
+                        :expected_holding_minutes, :reach_prob_json,
+                        :recommended_target_pct, :recommended_stop_pct,
+                        :recommended_holding_minutes, :target_confidence,
+                        :configured_target_pct, :configured_sl_pct,
+                        :strategy_version, :risk_version, :target_version,
+                        :experiment_id, :ab_group
                     )
                 """),
                 params,
@@ -269,7 +312,16 @@ class SignalAnalyticsService:
                             execution_grade, decision_trace_json,
                             decision_version, overlay_version,
                             confidence, adjusted_score,
-                            was_accepted, rejection_reason
+                            was_accepted, rejection_reason,
+                            expected_underlying_move_pct, expected_option_move_pct,
+                            expected_holding_minutes, reach_prob_json,
+                            recommended_target_pct, recommended_stop_pct,
+                            recommended_holding_minutes, target_confidence,
+                            configured_target_pct, configured_sl_pct,
+                            target_realism_pct,
+                            expiry_reason, expiry_snapshot_json,
+                            option_efficiency_score, delta_efficiency,
+                            time_in_profit_minutes, time_in_loss_minutes, time_near_target_minutes
                         FROM signal_analytics
                         WHERE signal_id = :sid
                         ORDER BY created_at DESC
@@ -285,23 +337,45 @@ class SignalAnalyticsService:
         if row is None:
             return None
 
+        def _f(v: object) -> float | None:
+            return float(v) if v is not None else None
+
         return {
             "market_context":              row[0],
-            "market_context_adj":          float(row[1])  if row[1]  is not None else None,
-            "event_adj":                   float(row[2])  if row[2]  is not None else None,
+            "market_context_adj":          _f(row[1]),
+            "event_adj":                   _f(row[2]),
             "event_overlay_json":          row[3],
             "regime_stability":            row[4],
-            "regime_stability_adj":        float(row[5])  if row[5]  is not None else None,
-            "overlay_adjusted_confidence": float(row[6])  if row[6]  is not None else None,
-            "context_size_multiplier":     float(row[7])  if row[7]  is not None else None,
+            "regime_stability_adj":        _f(row[5]),
+            "overlay_adjusted_confidence": _f(row[6]),
+            "context_size_multiplier":     _f(row[7]),
             "execution_grade":             row[8],
             "decision_trace_json":         row[9],
             "decision_version":            row[10],
             "overlay_version":             row[11],
-            "confidence":                  float(row[12]) if row[12] is not None else None,
-            "adjusted_score":              float(row[13]) if row[13] is not None else None,
-            "was_accepted":                bool(row[14])  if row[14] is not None else None,
+            "confidence":                  _f(row[12]),
+            "adjusted_score":              _f(row[13]),
+            "was_accepted":                bool(row[14]) if row[14] is not None else None,
             "rejection_reason":            row[15],
+            # Phase 24 fields
+            "expected_underlying_move_pct": _f(row[16]),
+            "expected_option_move_pct":     _f(row[17]),
+            "expected_holding_minutes":     int(row[18]) if row[18] is not None else None,
+            "reach_prob_json":              row[19],
+            "recommended_target_pct":       _f(row[20]),
+            "recommended_stop_pct":         _f(row[21]),
+            "recommended_holding_minutes":  int(row[22]) if row[22] is not None else None,
+            "target_confidence":            _f(row[23]),
+            "configured_target_pct":        _f(row[24]),
+            "configured_sl_pct":            _f(row[25]),
+            "target_realism_pct":           _f(row[26]),
+            "expiry_reason":                row[27],
+            "expiry_snapshot_json":         row[28],
+            "option_efficiency_score":      _f(row[29]),
+            "delta_efficiency":             _f(row[30]),
+            "time_in_profit_minutes":       int(row[31]) if row[31] is not None else None,
+            "time_in_loss_minutes":         int(row[32]) if row[32] is not None else None,
+            "time_near_target_minutes":     int(row[33]) if row[33] is not None else None,
         }
 
     async def update_outcome(
@@ -319,6 +393,17 @@ class SignalAnalyticsService:
         time_to_target_minutes: int | None = None,
         time_to_stop_minutes: int | None = None,
         pnl_pct: float | None = None,
+        # Phase 24 §3
+        target_realism_pct: float | None = None,
+        # Phase 24 §5
+        option_efficiency_score: float | None = None,
+        delta_efficiency: float | None = None,
+        gamma_efficiency: float | None = None,
+        vega_impact: float | None = None,
+        # Phase 24 §8
+        time_in_profit_minutes: int | None = None,
+        time_in_loss_minutes: int | None = None,
+        time_near_target_minutes: int | None = None,
     ) -> None:
         """Update outcome fields for a stored signal analytics record.
 
@@ -327,7 +412,6 @@ class SignalAnalyticsService:
           LOSS → negative value (stop loss return)
           If not provided, derived from current_return_pct.
         """
-        # Derive pnl_pct if not explicitly provided
         _pnl = pnl_pct
         if _pnl is None and current_return_pct is not None:
             _pnl = current_return_pct if target_hit else (-abs(current_return_pct) if stop_hit else current_return_pct)
@@ -348,7 +432,15 @@ class SignalAnalyticsService:
                         return_5d_pct = :r5d,
                         time_to_target_minutes = :ttt,
                         time_to_stop_minutes = :tts,
-                        outcome_checked_at = :now
+                        outcome_checked_at = :now,
+                        target_realism_pct = COALESCE(:target_realism_pct, target_realism_pct),
+                        option_efficiency_score = COALESCE(:option_efficiency_score, option_efficiency_score),
+                        delta_efficiency = COALESCE(:delta_efficiency, delta_efficiency),
+                        gamma_efficiency = COALESCE(:gamma_efficiency, gamma_efficiency),
+                        vega_impact = COALESCE(:vega_impact, vega_impact),
+                        time_in_profit_minutes = COALESCE(:time_in_profit_minutes, time_in_profit_minutes),
+                        time_in_loss_minutes = COALESCE(:time_in_loss_minutes, time_in_loss_minutes),
+                        time_near_target_minutes = COALESCE(:time_near_target_minutes, time_near_target_minutes)
                     WHERE id = :id
                 """),
                 {
@@ -357,6 +449,14 @@ class SignalAnalyticsService:
                     "r1h": return_1h_pct, "r1d": return_1d_pct, "r5d": return_5d_pct,
                     "ttt": time_to_target_minutes, "tts": time_to_stop_minutes,
                     "now": datetime.now(UTC), "id": analytics_id,
+                    "target_realism_pct": target_realism_pct,
+                    "option_efficiency_score": option_efficiency_score,
+                    "delta_efficiency": delta_efficiency,
+                    "gamma_efficiency": gamma_efficiency,
+                    "vega_impact": vega_impact,
+                    "time_in_profit_minutes": time_in_profit_minutes,
+                    "time_in_loss_minutes": time_in_loss_minutes,
+                    "time_near_target_minutes": time_near_target_minutes,
                 },
             )
             await db.commit()
