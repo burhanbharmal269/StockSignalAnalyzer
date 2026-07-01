@@ -86,10 +86,13 @@ services:
     image: ssa-frontend:dev
     container_name: ssa_frontend
     environment:
-      # Browser-side: points to backend API on host port 8000
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8000
-      # Server-side (SSR/API routes): uses internal Docker service name
+      # Server-side (SSR/API routes): uses internal Docker service name.
+      # Browser-side API/WS URLs are NOT set here — NEXT_PUBLIC_* vars are
+      # inlined at `npm run build` time, not read at container runtime, so
+      # setting them here would have no effect. The frontend instead derives
+      # the API/WS host from window.location.hostname at runtime (see
+      # frontend/src/lib/constants.ts), so it works from any VM IP/domain
+      # without a rebuild.
       - BACKEND_URL=http://backend:8000
     ports:
       - "3000:3000"
