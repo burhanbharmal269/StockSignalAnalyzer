@@ -33,9 +33,6 @@ ENV/
 # Limit lib/ ignore to Python build artifacts only (not frontend/src/lib)
 !/frontend/src/lib/
 
-# Poetry
-poetry.lock
-
 # Testing
 .pytest_cache/
 .coverage
