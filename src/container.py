@@ -111,8 +111,10 @@ from core.infrastructure.database.repositories.portfolio_repository import (
 from core.infrastructure.database.repositories.risk_profile_repository import (
     SqlAlchemyRiskProfileRepository,
 )
+from core.application.services.futures_oi_service import FuturesOIService
 from core.infrastructure.config.ai_config import AIConfig
 from core.infrastructure.config.broker_config import BrokerConfig
+from core.infrastructure.config.futures_oi_config import FuturesOIConfig
 from core.infrastructure.config.confidence_config import ConfidenceConfig, load_confidence_config
 from core.infrastructure.config.database_config import DatabaseConfig
 from core.infrastructure.config.redis_config import RedisConfig
@@ -816,13 +818,6 @@ class ApplicationContainer(containers.DeclarativeContainer):
         broker=kite_broker,
     )
 
-    session_expiry_watcher: providers.Singleton[SessionExpiryWatcher] = providers.Singleton(
-        SessionExpiryWatcher,
-        session_repository=broker_session_repository,
-        kill_switch_service=kill_switch_service,
-        broker_config=broker_config,
-    )
-
     execution_guard_service: providers.Singleton[ExecutionGuardService] = providers.Singleton(
         ExecutionGuardService,
         kill_switch_repository=kill_switch_repository,
@@ -1215,6 +1210,14 @@ class ApplicationContainer(containers.DeclarativeContainer):
         token_encryptor=token_encryptor,
     )
 
+    session_expiry_watcher: providers.Singleton[SessionExpiryWatcher] = providers.Singleton(
+        SessionExpiryWatcher,
+        session_repository=broker_session_repository,
+        kill_switch_service=kill_switch_service,
+        broker_config=broker_config,
+        live_feed_service=live_feed_service,
+    )
+
     signal_qualification_service = providers.Singleton(
         __import__(
             "core.application.services.signal_qualification_service",
@@ -1300,6 +1303,58 @@ class ApplicationContainer(containers.DeclarativeContainer):
         historical_svc=historical_data_service,
     )
 
+    # ── Phase 21 — Futures OI Integration ────────────────────────────────────
+
+    futures_oi_config: providers.Singleton[FuturesOIConfig] = providers.Singleton(
+        FuturesOIConfig,
+    )
+
+    futures_oi_service: providers.Singleton[FuturesOIService] = providers.Singleton(
+        FuturesOIService,
+        config=futures_oi_config,
+    )
+
+    # ── Phase 21.1 — OI Analytics Layer ──────────────────────────────────────
+
+    oi_analytics_config = providers.Singleton(
+        __import__(
+            "core.infrastructure.config.oi_analytics_config",
+            fromlist=["OIAnalyticsConfig"],
+        ).OIAnalyticsConfig,
+    )
+
+    oi_history_repository = providers.Singleton(
+        __import__(
+            "core.infrastructure.database.repositories.oi_history_repository",
+            fromlist=["OIHistoryRepository"],
+        ).OIHistoryRepository,
+        session_factory=db_session_factory,
+    )
+
+    oi_analytics_service = providers.Singleton(
+        __import__(
+            "core.application.services.oi_analytics_service",
+            fromlist=["OIAnalyticsService"],
+        ).OIAnalyticsService,
+        config=oi_analytics_config,
+        oi_history_repo=oi_history_repository,
+    )
+
+    failure_attribution_service = providers.Singleton(
+        __import__(
+            "core.application.services.failure_attribution_service",
+            fromlist=["FailureAttributionService"],
+        ).FailureAttributionService,
+        session_factory=db_session_factory,
+    )
+
+    feature_registry = providers.Singleton(
+        __import__(
+            "core.application.services.feature_registry",
+            fromlist=["FeatureRegistry"],
+        ).FeatureRegistry,
+    )
+
     option_chain_service = providers.Singleton(
         __import__(
             "core.application.services.option_chain_service",
@@ -1308,6 +1363,8 @@ class ApplicationContainer(containers.DeclarativeContainer):
         primary_provider=kite_market_data_provider,
         fallback_provider=nse_fallback_provider,
         session_factory=db_session_factory,
+        futures_oi_service=futures_oi_service,
+        oi_analytics_service=oi_analytics_service,
     )
 
     market_breadth_service = providers.Singleton(
@@ -1361,6 +1418,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
             fromlist=["DeploymentReadinessService"],
         ).DeploymentReadinessService,
         session_factory=db_session_factory,
+        oi_analytics_service=oi_analytics_service,
     )
 
     statistical_validation_service = providers.Singleton(
@@ -1492,6 +1550,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         overlay_pipeline=overlay_pipeline,
         portfolio_svc=portfolio_intelligence_service,
         scan_metrics_svc=scan_metrics_service,
+        futures_oi_svc=futures_oi_service,
     )
 
     expired_trade_intelligence_service: providers.Singleton[ExpiredTradeIntelligenceService] = providers.Singleton(

@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from core.application.services.data_quality_service import DataQualityService
     from core.application.services.event_calendar_service import EventCalendarService
     from core.application.services.execution_lock_service import ExecutionLockService
+    from core.application.services.futures_oi_service import FuturesOIService
     from core.application.services.market_breadth_service import MarketBreadthService
     from core.application.services.market_context_engine import MarketContextEngine
     from core.application.services.market_data.historical_data_service import HistoricalDataService
@@ -118,7 +119,7 @@ def _next_monthly_expiry() -> date:
             if nxt.month != month:
                 break
             candidate = nxt
-        if candidate >= today:
+        if candidate > today:  # strictly after today — avoid DTE=0 on expiry day
             return candidate
     return today + timedelta(days=30)
 
@@ -133,7 +134,7 @@ def _next_nifty_weekly_expiry() -> date:
     today = _ist_now().date()
     days_ahead = (1 - today.weekday()) % 7  # days until next Tuesday
     if days_ahead == 0:
-        return today  # today IS Tuesday = expiry day
+        days_ahead = 7  # on expiry day itself roll to next week — DTE=0 signals are unviable
     return today + timedelta(days=days_ahead)
 
 
@@ -240,9 +241,10 @@ def _compute_features(candles) -> dict:
         _ema50_val = float(ema_50) if ema_50 is not None and ema_50 == ema_50 else None
         supertrend_direction = (1 if close > _ema50_val else -1) if _ema50_val is not None else None
 
-        # OI change from consecutive candles — Kite includes OI in F&O historical data.
-        # oi_change_pct feeds the OI_BUILDUP scoring component (Component 1, weight 25).
-        # Use 3-bar smoothed average to reduce single-candle rollover noise near expiry.
+        # OI change from consecutive candle OI (candle-based fallback for F&O instruments).
+        # Kite returns OI=0 for equity/index spot candles; this path is only non-None for
+        # instruments that actually carry OI in historical data (rare for spot).
+        # The FuturesOIService (populated by the OptionChainPoller) is the primary source.
         if len(candles) >= 6:
             _recent_oi = sum(getattr(c, "oi", 0) or 0 for c in candles[-3:]) / 3
             _prior_oi  = sum(getattr(c, "oi", 0) or 0 for c in candles[-6:-3]) / 3
@@ -612,6 +614,7 @@ class SignalScannerService:
         overlay_pipeline: "OverlayPipeline | None" = None,
         portfolio_svc: "PortfolioIntelligenceService | None" = None,
         scan_metrics_svc: "ScanMetricsService | None" = None,
+        futures_oi_svc: "FuturesOIService | None" = None,
     ) -> None:
         from core.application.services.data_quality_service import DataQualityService
         from core.application.services.option_strike_selector import OptionStrikeSelector
@@ -629,6 +632,7 @@ class SignalScannerService:
         self._overlay_pipeline = overlay_pipeline
         self._portfolio_svc    = portfolio_svc
         self._scan_metrics     = scan_metrics_svc
+        self._futures_oi_svc  = futures_oi_svc
         self._dq_service      = DataQualityService()
         self._strike_selector = OptionStrikeSelector()
         self._running         = False
@@ -972,6 +976,27 @@ class SignalScannerService:
             _log.debug("signal_scanner.skip symbol=%s reason=feature_compute_failed", symbol)
             return "rejected"
 
+        # For index instruments, the hv_iv_ratio is computed using the BB-width percentile
+        # as an IV proxy (a rank, not an absolute value). This makes the ratio structurally
+        # low for indices (NIFTY IV ≈ 10-15%; BB percentile ≈ 30-50% → ratio always ≪ 0.8)
+        # causing a permanent "options expensive" flag that has no meaning for indices.
+        # Null it out so the IV_ANALYSIS component skips the HV/IV bonus step for indices.
+        if sym.is_index:
+            features["hv_iv_ratio"] = None
+
+        # Phase 21: override oi_change_pct with Futures OI cache (primary source).
+        # Candle OI is always 0 for equity/index spot — the cache gives real sequential change.
+        # Fail-open: if cache unavailable (not yet warmed, stale, FUT not found), the
+        # candle-derived value (also None for spot) passes through unchanged — scanner continues.
+        if self._futures_oi_svc is not None:
+            _fut_snap = self._futures_oi_svc.get_cached(symbol)
+            if _fut_snap is not None and _fut_snap.oi_change_pct is not None:
+                features["oi_change_pct"] = _fut_snap.oi_change_pct
+                _log.debug(
+                    "signal_scanner.futures_oi symbol=%s oi=%d change_pct=%.2f direction=%s",
+                    symbol, _fut_snap.oi, _fut_snap.oi_change_pct, _fut_snap.oi_direction,
+                )
+
         adx       = features.get("adx", 0)
         vol_ratio = features.get("volume_ratio", 0)
         rsi       = features.get("rsi_14", 50)
@@ -1097,15 +1122,22 @@ class SignalScannerService:
 
             _last_candle_age: float | None = None
             if candles:
-                _lc_ts = getattr(candles[-1], "date", None) or getattr(candles[-1], "timestamp", None)
+                _lc_ts = getattr(candles[-1], "ts", None) or getattr(candles[-1], "date", None) or getattr(candles[-1], "timestamp", None)
                 if _lc_ts is not None and hasattr(_lc_ts, "hour"):
                     # candle timestamp is a datetime; compute age in minutes
                     _lc_aware = _lc_ts if getattr(_lc_ts, "tzinfo", None) else _lc_ts.replace(tzinfo=UTC)
                     _last_candle_age = (datetime.now(UTC) - _lc_aware).total_seconds() / 60.0
 
+            # has_oi: prefer FuturesOIService (real data); fall back to candle-derived
+            # oi_change_pct (always None for spot, so DQ penalises correctly when cache cold).
+            _has_oi = (
+                self._futures_oi_svc.has_data(symbol)
+                if self._futures_oi_svc is not None
+                else features.get("oi_change_pct") is not None
+            )
             _dq_report = self._dq_service.compute(
                 option_chain_age_minutes=_oc_age,
-                has_oi=features.get("oi_change_pct") is not None,
+                has_oi=_has_oi,
                 has_5m_candles=mtf_5m is not None,
                 has_vix=india_vix is not None,
                 has_gex=oc_snap is not None and oc_snap.gex_positive is not None,

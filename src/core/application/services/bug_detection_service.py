@@ -63,7 +63,8 @@ _log = logging.getLogger(__name__)
 
 _OVERLAY_NAMES = [
     "market_context",
-    "event_overlay",
+    # "event" is excluded: it only applies on expiry days, so any non-expiry window
+    # looks like it never fires. Monitored separately by _check_event_calendar_empty.
     "regime_stability",
     "portfolio_heat",
     "portfolio_correlation",
@@ -213,10 +214,12 @@ class BugDetectionService:
 
     async def _check_event_calendar_empty(self, sample_n: int) -> dict[str, Any]:
         async with self._sf() as db:
-            # Check if event_calendar has any upcoming entries
+            # Only check events that were actually active today (current trading session).
+            # Past-week events that have already expired should not trigger this alert.
             r = await db.execute(text("""
                 SELECT COUNT(*) FROM event_calendar
-                WHERE event_date >= CURRENT_DATE - INTERVAL '7 days'
+                WHERE is_active = true
+                  AND event_date = CURRENT_DATE
             """))
             event_count = int((r.fetchone() or (0,))[0])
 
@@ -228,21 +231,21 @@ class BugDetectionService:
                     WHERE decision_trace_json IS NOT NULL
                     ORDER BY created_at DESC LIMIT {sample_n}
                 ) recent
-            """), {"pat": '%"name": "event_overlay"%"applied": true%'})
+            """), {"pat": '%"name": "event"%"applied": true%'})
             row2 = r2.fetchone()
 
         event_overlay_fired = int(row2[0] or 0)
         total               = int(row2[1] or 0)
 
-        # Bug: events exist in calendar but overlay never fires
-        detected = event_count >= 3 and total >= 20 and event_overlay_fired == 0
+        # Bug: there is an active event today but the overlay never fires for any signal.
+        detected = event_count >= 1 and total >= 20 and event_overlay_fired == 0
 
         return _bug(
             "event_calendar_empty",
             detected,
             "MEDIUM" if detected else "OK",
-            "Event calendar has entries but event_overlay never fired — event data may not be reaching the overlay pipeline.",
-            {"calendar_events_7d": event_count, "overlay_fired": event_overlay_fired, "sample": total},
+            "An event is active today but event overlay never fired — event data may not be reaching the overlay pipeline.",
+            {"calendar_events_today": event_count, "overlay_fired": event_overlay_fired, "sample": total},
             "Verify that EventCalendarService is being called in OverlayPipeline and that event dates align with signal timestamps." if detected else "",
         )
 

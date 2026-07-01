@@ -145,6 +145,16 @@ class SignalAnalyticsOrm(Base):
     )
     deployment_stage: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
+    # Phase 21.1 — Futures OI context at signal time (added migration 20260701_1000)
+    futures_oi:              Mapped[int | None]   = mapped_column(BigInteger, nullable=True)
+    oi_change:               Mapped[int | None]   = mapped_column(BigInteger, nullable=True)
+    oi_change_pct:           Mapped[float | None] = mapped_column(Numeric(8, 4), nullable=True)
+    oi_direction:            Mapped[str | None]   = mapped_column(String(20), nullable=True)
+    oi_regime:               Mapped[str | None]   = mapped_column(String(30), nullable=True)
+    futures_contract:        Mapped[str | None]   = mapped_column(String(50), nullable=True)
+    oi_quality_score:        Mapped[str | None]   = mapped_column(String(20), nullable=True)
+    quote_freshness_seconds: Mapped[int | None]   = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )

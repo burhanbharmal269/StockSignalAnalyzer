@@ -13,7 +13,7 @@ Stores snapshots in option_chain_snapshots table (iv column now populated).
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
@@ -22,12 +22,56 @@ from sqlalchemy import text
 from core.domain.analytics.iv_calculator import compute_chain_analytics
 
 if TYPE_CHECKING:
+    from core.application.services.futures_oi_service import FuturesOIService
+    from core.application.services.oi_analytics_service import OIAnalyticsService
     from core.domain.interfaces.i_market_data_provider import IMarketDataProvider
 
 _log = logging.getLogger(__name__)
 
 # IV percentile look-back window: 252 trading days ≈ 1 year
 _IV_PERCENTILE_LOOKBACK = 252
+
+# Indices with WEEKLY options (NSE, as of Sep 2025)
+_WEEKLY_OPTION_SYMBOLS = {"NIFTY"}
+# All other indices and stocks use monthly expiry (last Tuesday of month, NSE post-Sep-2025)
+
+
+def _near_expiry_for(underlying: str) -> date:
+    """Return the nearest active option expiry date for a given underlying.
+
+    Rules (NSE effective 1-Sep-2025 SEBI circular):
+      - NIFTY: weekly options, expire every Tuesday. Skip today if today IS Tuesday
+        (expiry-day options have DTE=0 — too close for meaningful signals).
+      - All other symbols: monthly options, expire on the last Tuesday of the month.
+        If that expiry has already passed today, return next month's last Tuesday.
+    """
+    today = datetime.now(UTC).date()
+
+    if underlying in _WEEKLY_OPTION_SYMBOLS:
+        # Next Tuesday (never today even if today is Tuesday — avoid DTE=0 options)
+        days_ahead = (1 - today.weekday()) % 7
+        if days_ahead == 0:
+            days_ahead = 7
+        return today + timedelta(days=days_ahead)
+
+    # Monthly: last Tuesday of current (or next) month
+    for month_offset in range(3):
+        year = today.year + (today.month + month_offset - 1) // 12
+        month = (today.month + month_offset - 1) % 12 + 1
+        # Start from 28th — guaranteed to be in month — then find first Tuesday ≥ 28th
+        probe = date(year, month, 28)
+        while probe.weekday() != 1:   # 1 = Tuesday
+            probe += timedelta(days=1)
+        # Advance by weeks while still in same month
+        while True:
+            nxt = probe + timedelta(days=7)
+            if nxt.month != month:
+                break
+            probe = nxt
+        if probe > today:  # strictly after today so we don't trade on the expiry day
+            return probe
+
+    return today + timedelta(days=30)
 
 
 class OptionChainService:
@@ -36,21 +80,76 @@ class OptionChainService:
         primary_provider: IMarketDataProvider,
         fallback_provider: IMarketDataProvider,
         session_factory,
+        futures_oi_service: "FuturesOIService | None" = None,
+        oi_analytics_service: "OIAnalyticsService | None" = None,
     ) -> None:
         self._primary = primary_provider
         self._fallback = fallback_provider
         self._sf = session_factory
+        self._futures_oi_svc = futures_oi_service
+        self._oi_analytics_svc = oi_analytics_service
+        # In-memory GEX cache: {underlying: {"net_gex": float, "gex_positive": bool|None}}
+        # Populated by fetch_and_store(); read by get_latest() via _latest_net_gex().
+        self._gex_cache: dict[str, dict] = {}
 
     async def fetch_and_store(self, underlying: str, lot_size: int = 50) -> dict:
-        """Fetch option chain, compute IV/GEX/skew, store snapshot, return analysis."""
-        entries = await self._fetch(underlying)
-        if not entries:
+        """Fetch option chain for the nearest active expiry, compute IV/GEX/skew, store snapshot."""
+        expiry = _near_expiry_for(underlying)
+        include_futures = (
+            self._futures_oi_svc is not None
+            and getattr(self._futures_oi_svc, "_cfg", None) is not None
+            and self._futures_oi_svc._cfg.oi_poll_enabled
+        )
+        all_entries = await self._fetch(underlying, expiry=expiry, include_futures=include_futures)
+        if not all_entries:
             return {"underlying": underlying, "error": "no data"}
+
+        # Separate FUT entries from CE/PE for FuturesOIService; only CE/PE goes to analysis
+        fut_entries = [e for e in all_entries if e.option_type == "FUT"]
+        entries = [e for e in all_entries if e.option_type != "FUT"]
+
+        if self._futures_oi_svc is not None:
+            if fut_entries:
+                for fut in fut_entries:
+                    self._futures_oi_svc.update(
+                        underlying=underlying,
+                        tradingsymbol=fut.tradingsymbol,
+                        instrument_token=fut.instrument_token,
+                        expiry=fut.expiry,
+                        last_price=float(fut.last_price),
+                        oi=fut.open_interest,
+                        oi_day_high=fut.oi_day_high,
+                        oi_day_low=fut.oi_day_low,
+                    )
+            else:
+                self._futures_oi_svc.mark_missing(underlying, "no_fut_contract_in_chain")
+
+            # Phase 21.1 — push latest snapshot into OI analytics (read-only, fail-open)
+            if self._oi_analytics_svc is not None:
+                snap = self._futures_oi_svc.get_cached(underlying)
+                if snap is not None:
+                    try:
+                        await self._oi_analytics_svc.update_from_snapshot(snap)
+                    except Exception as _oa_exc:
+                        _log.debug("oi_analytics.update_failed underlying=%s: %s", underlying, _oa_exc)
+
+        if not entries:
+            return {"underlying": underlying, "error": "no option entries after filtering FUT"}
+
+        _log.debug(
+            "option_chain.fetched underlying=%s expiry=%s ce_pe=%d fut=%d",
+            underlying, expiry, len(entries), len(fut_entries),
+        )
 
         # Get spot price from provider — needed for accurate Black-Scholes IV
         spot = await self._get_spot(underlying)
 
         analysis = await self._analyze(underlying, entries, spot, lot_size)
+        # Cache GEX so get_latest() can return it without a schema change
+        self._gex_cache[underlying] = {
+            "net_gex": analysis.get("net_gex"),
+            "gex_positive": analysis.get("gex_positive"),
+        }
         await self._persist(underlying, entries, analysis)
         return analysis
 
@@ -80,6 +179,7 @@ class OptionChainService:
             atm_iv = await self._latest_atm_iv(underlying, db)
             iv_skew = await self._latest_iv_skew(underlying, db)
             net_gex = await self._latest_net_gex(underlying, db)
+            gex_positive = self.get_cached_gex_positive(underlying)
 
             return {
                 "underlying": underlying,
@@ -90,6 +190,7 @@ class OptionChainService:
                 "iv_percentile": iv_pct,
                 "iv_skew": iv_skew,
                 "net_gex": net_gex,
+                "gex_positive": gex_positive,
                 "entries": [dict(r) for r in rows],
             }
 
@@ -219,15 +320,24 @@ class OptionChainService:
             pass
         return 0.0
 
-    async def _fetch(self, underlying: str) -> list:
+    async def _fetch(
+        self,
+        underlying: str,
+        expiry: date | None = None,
+        include_futures: bool = False,
+    ) -> list:
         try:
-            entries = await self._primary.get_option_chain(underlying)
+            entries = await self._primary.get_option_chain(
+                underlying, expiry=expiry, include_futures=include_futures
+            )
             if entries:
                 return entries
         except Exception as exc:
             _log.warning("option_chain primary failed %s: %s", underlying, exc)
         try:
-            return await self._fallback.get_option_chain(underlying)
+            return await self._fallback.get_option_chain(
+                underlying, expiry=expiry, include_futures=include_futures
+            )
         except Exception as exc:
             _log.warning("option_chain fallback failed %s: %s", underlying, exc)
             return []
@@ -322,8 +432,14 @@ class OptionChainService:
         return None
 
     async def _latest_net_gex(self, underlying: str, db) -> float | None:
-        """GEX is computed at fetch_and_store time; scanner reads it from analysis dict directly."""
-        return None
+        """Return GEX from the in-memory cache populated by the most recent fetch_and_store call."""
+        cached = self._gex_cache.get(underlying)
+        return cached.get("net_gex") if cached else None
+
+    def get_cached_gex_positive(self, underlying: str) -> bool | None:
+        """Return gex_positive from the latest fetch_and_store call, or None if not yet fetched."""
+        cached = self._gex_cache.get(underlying)
+        return cached.get("gex_positive") if cached else None
 
 
 def _dte_from_entries(entries: list) -> int:

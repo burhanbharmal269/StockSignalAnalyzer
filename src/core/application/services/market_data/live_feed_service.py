@@ -53,6 +53,7 @@ class LiveMarketFeedService:
         self._kite_ticker: Any = None
         self._running = False
         self._poll_task: asyncio.Task | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     # ------------------------------------------------------------------
     # Subscription management
@@ -98,6 +99,7 @@ class LiveMarketFeedService:
             ticker.on_error = lambda ws, c, m: _log.warning("kite_ticker.error %s", m)
             self._kite_ticker = ticker
             loop = asyncio.get_event_loop()
+            self._loop = loop  # captured for use in KiteTicker background-thread callbacks
             await loop.run_in_executor(None, ticker.connect, True)
             self._ws_connected = True
             await self._redis.set("live_feed:connected", "1")
@@ -109,7 +111,8 @@ class LiveMarketFeedService:
             return False
 
     def _on_kite_ticks(self, ws, ticks: list[dict]) -> None:
-        asyncio.create_task(self._process_kite_ticks(ticks))
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(self._process_kite_ticks(ticks), self._loop)
 
     async def _process_kite_ticks(self, ticks: list[dict]) -> None:
         for tick in ticks:
@@ -122,9 +125,12 @@ class LiveMarketFeedService:
 
     def _on_ws_close(self) -> None:
         self._ws_connected = False
-        asyncio.create_task(self._redis.set("live_feed:connected", "0"))
         _log.warning("kite_ticker.closed — switching to NSE polling")
-        asyncio.create_task(self._start_polling_fallback())
+        if self._loop is not None:
+            asyncio.run_coroutine_threadsafe(
+                self._redis.set("live_feed:connected", "0"), self._loop
+            )
+            asyncio.run_coroutine_threadsafe(self._start_polling_fallback(), self._loop)
 
     async def _ws_subscribe(self, symbols: list[str]) -> None:
         pass  # Token-based subscription handled internally by KiteTicker
@@ -197,6 +203,32 @@ class LiveMarketFeedService:
                 self._kite_ticker.stop()
             except Exception:
                 pass
+
+    async def upgrade_to_kite_ws(self) -> bool:
+        """Switch from NSE polling to Kite WebSocket after a new session is created.
+
+        Safe to call even if already connected — returns True immediately when
+        WebSocket is already up.  Stops the polling task before reconnecting so
+        there is no duplicate tick source.
+        """
+        if self._ws_connected:
+            _log.debug("live_feed.upgrade_to_kite_ws: already connected, skipping")
+            return True
+        _log.info("live_feed.upgrade_to_kite_ws: new Kite session detected — reconnecting")
+        # Stop NSE polling before switching
+        self._running = False
+        if self._poll_task and not self._poll_task.done():
+            self._poll_task.cancel()
+            try:
+                await self._poll_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._poll_task = None
+        connected = await self.start_kite_ws()
+        if not connected:
+            # Session disappeared between detection and connect — fall back again
+            await self._start_polling_fallback()
+        return connected
 
     async def start(self) -> None:
         connected = await self.start_kite_ws()

@@ -26,6 +26,9 @@ _MARKET_OPEN  = (9, 15)              # (hour, minute) IST
 _MARKET_CLOSE = (15, 30)
 _MAX_CONCURRENT = 5                   # parallel Kite calls per batch
 _BATCH_SIZE = 50                      # symbols per cycle (Kite rate-limit guard)
+# Indices are always polled every cycle regardless of shuffle — their option chain
+# data drives the signal engine's wall / IV / max-pain calculation.
+_PRIORITY_SYMBOLS = {"NIFTY", "BANKNIFTY", "FINNIFTY", "MIDCPNIFTY"}
 
 
 class OptionChainPollerService:
@@ -59,13 +62,14 @@ class OptionChainPollerService:
 
     async def _poll_cycle(self) -> None:
         symbols = await self._universe.get_active_symbols(fo_only=True)
-        # Indices (NIFTY, BANKNIFTY etc.) and F&O stocks — both need option chains
         tickers = [s.symbol for s in symbols]
 
-        # Shuffle so different symbols get priority each cycle under the batch cap
+        # Always poll indices first (guaranteed slot), then random stock sample.
         import random
-        random.shuffle(tickers)
-        batch = tickers[:_BATCH_SIZE]
+        priority = [t for t in tickers if t in _PRIORITY_SYMBOLS]
+        stocks   = [t for t in tickers if t not in _PRIORITY_SYMBOLS]
+        random.shuffle(stocks)
+        batch = priority + stocks[:max(0, _BATCH_SIZE - len(priority))]
 
         sem = asyncio.Semaphore(_MAX_CONCURRENT)
         results = await asyncio.gather(
@@ -108,6 +112,12 @@ class OptionChainPollerService:
         ist_minute = (now.minute + 30) % 60
         if now.minute + 30 >= 60:
             ist_hour = (ist_hour + 1) % 24
+        # IST date: advance day if UTC+5:30 rolled past midnight
+        ist_day = now.weekday()
+        if now.hour + 5 >= 24 or (now.hour + 5 == 23 and now.minute + 30 >= 60):
+            ist_day = (ist_day + 1) % 7
+        if ist_day >= 5:  # Saturday=5, Sunday=6
+            return False
         open_mins  = _MARKET_OPEN[0]  * 60 + _MARKET_OPEN[1]
         close_mins = _MARKET_CLOSE[0] * 60 + _MARKET_CLOSE[1]
         current    = ist_hour * 60 + ist_minute

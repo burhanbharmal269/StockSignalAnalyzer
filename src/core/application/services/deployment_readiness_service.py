@@ -53,8 +53,13 @@ def _wilson_ci_width(k: int, n: int, z: float = 1.96) -> float:
 class DeploymentReadinessService:
     """Computes the 0-100 deployment readiness score."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        oi_analytics_service: Any = None,
+    ) -> None:
         self._sf = session_factory
+        self._oi_analytics_svc = oi_analytics_service
 
     async def get_readiness_score(self) -> dict[str, Any]:
         """Full readiness assessment: score, tier, and per-category breakdown."""
@@ -69,7 +74,7 @@ class DeploymentReadinessService:
             execution["score"] + risk["score"] + data_q["score"]
         )
 
-        return {
+        result: dict[str, Any] = {
             "total_score":    total,
             "max_score":      100,
             "tier":           _tier(total),
@@ -82,6 +87,58 @@ class DeploymentReadinessService:
             },
             "evaluated_at": datetime.now(UTC).isoformat(),
         }
+
+        # Phase 21.1 — OI health (informational only, zero pts added to total)
+        if self._oi_analytics_svc is not None:
+            result["oi_health"] = self._score_oi_health()
+
+        return result
+
+    def _score_oi_health(self) -> dict[str, Any]:
+        """OI health summary — informational block, does NOT affect the 100-pt total score."""
+        try:
+            coverage = self._oi_analytics_svc.get_coverage_summary()
+            anomalies = self._oi_analytics_svc.get_anomalies()
+            breadth = self._oi_analytics_svc.get_market_breadth_oi()
+            metrics = self._oi_analytics_svc.get_metrics()
+
+            n = coverage.get("symbols_tracked", 0)
+            coverage_pct = coverage.get("coverage_pct", 0.0)
+            anomaly_count = len(anomalies)
+
+            if n == 0:
+                status = "NOT_STARTED"
+                summary = "OI analytics has not yet received any snapshots."
+            elif coverage_pct >= 80 and anomaly_count == 0:
+                status = "HEALTHY"
+                summary = f"OI coverage {coverage_pct:.0f}% across {n} symbols. No anomalies."
+            elif coverage_pct >= 60 or anomaly_count <= 2:
+                status = "DEGRADED"
+                summary = f"OI coverage {coverage_pct:.0f}% ({n} symbols). {anomaly_count} anomaly/anomalies active."
+            else:
+                status = "POOR"
+                summary = f"OI coverage only {coverage_pct:.0f}% ({n} symbols). {anomaly_count} anomalies."
+
+            return {
+                "status":           status,
+                "summary":          summary,
+                "symbols_tracked":  n,
+                "coverage_pct":     coverage_pct,
+                "quality_dist":     coverage.get("quality_distribution", {}),
+                "anomalies_active": anomaly_count,
+                "active_anomalies": [a["symbol"] for a in anomalies],
+                "breadth": {
+                    "long_buildup_pct":  breadth.get("long_buildup_pct", 0.0),
+                    "short_buildup_pct": breadth.get("short_buildup_pct", 0.0),
+                    "long_unwind_pct":   breadth.get("long_unwind_pct", 0.0),
+                    "short_cover_pct":   breadth.get("short_cover_pct", 0.0),
+                },
+                "snapshots_written": metrics.get("snapshots_written", 0),
+                "note": "Informational only. Does not affect deployment readiness score.",
+            }
+        except Exception as exc:
+            _log.warning("deployment_readiness.oi_health_failed: %s", exc)
+            return {"status": "ERROR", "error": str(exc)}
 
     # ── Infrastructure (20 pts) ───────────────────────────────────────────────
 
@@ -426,11 +483,16 @@ class DeploymentReadinessService:
                     SELECT
                         ROUND(AVG(COALESCE(data_quality_score, 0)), 4) AS avg_dq,
                         ROUND(
-                            AVG(CASE WHEN missing_sources IS NOT NULL AND missing_sources != '[]' THEN 1.0 ELSE 0.0 END),
+                            AVG(CASE
+                                WHEN missing_sources IS NULL OR missing_sources = '[]' THEN 0.0
+                                WHEN missing_sources = '["oi_data"]' THEN 0.0
+                                ELSE 1.0
+                            END),
                             4
                         ) AS missing_rate,
                         ROUND(
-                            SUM(CASE WHEN option_type IS NOT NULL THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0),
+                            SUM(CASE WHEN was_accepted = true AND option_type IS NOT NULL THEN 1 ELSE 0 END) * 100.0
+                            / NULLIF(SUM(CASE WHEN was_accepted = true THEN 1 ELSE 0 END), 0),
                             2
                         ) AS opt_coverage,
                         COUNT(*) AS total
@@ -455,8 +517,8 @@ class DeploymentReadinessService:
         total    = int(dq_row[3] or 0)
         vix_n    = int(vix_row[0] or 0)
 
-        # Avg data quality score (5 pts)
-        pts_dq = 5 if avg_dq >= 0.90 else (4 if avg_dq >= 0.80 else (2 if avg_dq >= 0.70 else 1))
+        # Avg data quality score (5 pts) — data_quality_score is stored as int 0-100
+        pts_dq = 5 if avg_dq >= 90 else (4 if avg_dq >= 80 else (2 if avg_dq >= 70 else 1))
         score += pts_dq
         checks["data_quality_score"] = {"points": pts_dq, "max": 5, "value": round(avg_dq, 3), "sample": total}
 

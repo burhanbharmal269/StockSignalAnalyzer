@@ -119,7 +119,12 @@ class BrokerMargin:
 
 @dataclass(frozen=True)
 class OptionChainEntry:
-    """Single strike entry in an option chain snapshot."""
+    """Single strike entry in an option chain snapshot.
+
+    For option entries (option_type CE/PE): all fields apply as documented.
+    For futures entries (option_type FUT): strike is 0, change_in_oi is 0;
+    tradingsymbol, oi_day_high, oi_day_low are populated.
+    """
 
     symbol: str
     exchange: str
@@ -132,3 +137,6 @@ class OptionChainEntry:
     volume: int
     instrument_token: int
     iv: Decimal | None = None
+    tradingsymbol: str = ""   # NFO tradingsymbol, e.g. "RELIANCE26JULFUT" (FUT only)
+    oi_day_high: int = 0      # Daily OI high from Kite quote (FUT only, informational)
+    oi_day_low: int = 0       # Daily OI low from Kite quote (FUT only, informational)

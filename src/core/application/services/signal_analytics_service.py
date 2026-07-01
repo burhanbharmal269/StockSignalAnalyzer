@@ -66,6 +66,7 @@ class SignalAnalyticsService:
         features: dict,
         option_play: "OptionPlay | None" = None,
         overlay: "dict | None" = None,
+        oi_context: "dict | None" = None,
     ) -> None:
         """Record one scanner result to signal_analytics. Never raises — fail-open."""
         try:
@@ -75,6 +76,7 @@ class SignalAnalyticsService:
                 request, result, features, execution_mode,
                 option_play=option_play,
                 overlay=overlay,
+                oi_context=oi_context,
             )
         except Exception as exc:
             _log.warning("signal_analytics.record_failed symbol=%s: %s", symbol_name, exc, exc_info=True)
@@ -91,6 +93,7 @@ class SignalAnalyticsService:
         execution_mode: str = "MANUAL",
         option_play: "OptionPlay | None" = None,
         overlay: "dict | None" = None,
+        oi_context: "dict | None" = None,
     ) -> None:
         bd = result.score_breakdown
         rejection = result.rejection_reason.value if result.rejection_reason else None
@@ -207,6 +210,16 @@ class SignalAnalyticsService:
             # Phase 25 §2 — Experiment assignment (populated by caller via overlay)
             "experiment_id":    overlay.get("experiment_id") if overlay else None,
             "ab_group":         overlay.get("ab_group")      if overlay else None,
+
+            # Phase 21.1 — Futures OI context at signal time (all nullable)
+            "futures_oi":              oi_context.get("futures_oi")              if oi_context else None,
+            "oi_change":               oi_context.get("oi_change")               if oi_context else None,
+            "oi_change_pct":           oi_context.get("oi_change_pct")           if oi_context else None,
+            "oi_direction":            oi_context.get("oi_direction")            if oi_context else None,
+            "oi_regime":               oi_context.get("oi_regime")               if oi_context else None,
+            "futures_contract":        oi_context.get("futures_contract")        if oi_context else None,
+            "oi_quality_score":        oi_context.get("oi_quality_score")        if oi_context else None,
+            "quote_freshness_seconds": oi_context.get("quote_freshness_seconds") if oi_context else None,
         }
 
         # Phase 23 §2 — signal qualification (pure research label, no pipeline effect)
@@ -253,7 +266,11 @@ class SignalAnalyticsService:
                         recommended_holding_minutes, target_confidence,
                         configured_target_pct, configured_sl_pct,
                         strategy_version, risk_version, target_version,
-                        experiment_id, ab_group
+                        experiment_id, ab_group,
+                        futures_oi, oi_change, oi_change_pct, oi_direction,
+                        oi_regime, futures_contract, oi_quality_score, quote_freshness_seconds,
+                        futures_oi, oi_change, oi_change_pct, oi_direction,
+                        oi_regime, futures_contract, oi_quality_score, quote_freshness_seconds
                     ) VALUES (
                         :signal_id, :ticker, :exchange, :direction, :strategy_type, :regime,
                         :sector, :is_index, :execution_mode,
@@ -282,7 +299,9 @@ class SignalAnalyticsService:
                         :recommended_holding_minutes, :target_confidence,
                         :configured_target_pct, :configured_sl_pct,
                         :strategy_version, :risk_version, :target_version,
-                        :experiment_id, :ab_group
+                        :experiment_id, :ab_group,
+                        :futures_oi, :oi_change, :oi_change_pct, :oi_direction,
+                        :oi_regime, :futures_contract, :oi_quality_score, :quote_freshness_seconds
                     )
                 """),
                 params,

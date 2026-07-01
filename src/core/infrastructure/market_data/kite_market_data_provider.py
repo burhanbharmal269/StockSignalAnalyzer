@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Callable, Any
@@ -85,6 +86,9 @@ class KiteMarketDataProvider(IMarketDataProvider):
         self._nfo_instruments: list[dict] = []
         self._nfo_instruments_ts: datetime | None = None
         self._nfo_lock = asyncio.Lock()
+        # Limit concurrent historical API calls to avoid Kite 429 rate limiting.
+        # Kite allows ~3 req/s on the historical endpoint; 3 parallel keeps us safe.
+        self._hist_semaphore = asyncio.Semaphore(3)
 
     @property
     def provider_name(self) -> str:
@@ -140,36 +144,54 @@ class KiteMarketDataProvider(IMarketDataProvider):
 
         _IST_OFFSET = timedelta(hours=5, minutes=30)
 
+        def _to_ist_naive(dt: datetime) -> datetime:
+            if dt.tzinfo is not None:
+                return (dt + _IST_OFFSET).replace(tzinfo=None)
+            return dt
+
         while cursor < to_dt:
             chunk_end = min(cursor + timedelta(days=chunk_days), to_dt)
-            try:
-                # Kite historical_data() expects naive IST datetimes. Our internal
-                # datetimes are UTC-aware. Convert here so the API date range is correct.
-                def _to_ist_naive(dt: datetime) -> datetime:
-                    if dt.tzinfo is not None:
-                        return (dt + _IST_OFFSET).replace(tzinfo=None)
-                    return dt  # already assumed IST naive (legacy path)
-
-                raw: list[dict] = await loop.run_in_executor(
-                    None,
-                    lambda c=cursor, ce=chunk_end: self._get_kite().historical_data(
-                        token, _to_ist_naive(c), _to_ist_naive(ce), kite_interval, oi=True
-                    ),
-                )
-                for r in raw:
-                    all_candles.append(HistoricalCandle(
-                        symbol=symbol,
-                        timeframe=timeframe,
-                        ts=r["date"],
-                        open=Decimal(str(r["open"])),
-                        high=Decimal(str(r["high"])),
-                        low=Decimal(str(r["low"])),
-                        close=Decimal(str(r["close"])),
-                        volume=int(r.get("volume", 0)),
-                        oi=int(r.get("oi", 0)),
-                    ))
-            except Exception as exc:
-                _log.warning("kite.historical_data failed %s %s: %s", symbol, timeframe, exc)
+            # Retry up to 3 times on 429 (rate limit) with exponential back-off
+            for attempt in range(3):
+                try:
+                    async with self._hist_semaphore:
+                        raw: list[dict] = await loop.run_in_executor(
+                            None,
+                            lambda c=cursor, ce=chunk_end: self._get_kite().historical_data(
+                                token, _to_ist_naive(c), _to_ist_naive(ce), kite_interval, oi=True
+                            ),
+                        )
+                    for r in raw:
+                        all_candles.append(HistoricalCandle(
+                            symbol=symbol,
+                            timeframe=timeframe,
+                            ts=r["date"],
+                            open=Decimal(str(r["open"])),
+                            high=Decimal(str(r["high"])),
+                            low=Decimal(str(r["low"])),
+                            close=Decimal(str(r["close"])),
+                            volume=int(r.get("volume", 0)),
+                            oi=int(r.get("oi", 0)),
+                        ))
+                    break  # success
+                except Exception as exc:
+                    exc_str = str(exc)
+                    is_rate_limit = "429" in exc_str or "Too Many Requests" in exc_str
+                    if is_rate_limit and attempt < 2:
+                        delay = (2 ** attempt) + random.uniform(0.5, 1.5)
+                        _log.warning(
+                            "kite.historical_data 429 rate limit %s %s (attempt %d) — retrying in %.1fs",
+                            symbol, timeframe, attempt + 1, delay,
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        _log.warning(
+                            "kite.historical_data failed %s %s: %s", symbol, timeframe, exc
+                        )
+                        cursor = to_dt  # abort remaining chunks for this symbol
+                        break
+            else:
+                # All retries exhausted
                 break
             cursor = chunk_end
 
@@ -234,25 +256,54 @@ class KiteMarketDataProvider(IMarketDataProvider):
         self,
         underlying: str,
         expiry: date | None = None,
+        include_futures: bool = False,
     ) -> list[OptionChainEntry]:
         await self._ensure_authenticated()
         loop = asyncio.get_event_loop()
         kite = self._get_kite()
         instruments = await self._get_nfo_instruments()
+        today = date.today()
 
+        # CE/PE instruments for the given options expiry
         chain = [
             i for i in instruments
             if i["name"] == underlying
             and i["instrument_type"] in ("CE", "PE")
             and (expiry is None or i.get("expiry") == expiry)
         ]
-        if not chain:
+
+        # Near-month FUT contract — included in the SAME quote batch, no extra API call.
+        # Selects the nearest non-expired monthly futures contract.
+        fut_inst: dict | None = None
+        if include_futures:
+            fut_candidates = sorted(
+                [
+                    i for i in instruments
+                    if i["name"] == underlying
+                    and i["instrument_type"] == "FUT"
+                    and i.get("expiry") is not None
+                    and i["expiry"] >= today
+                ],
+                key=lambda x: x["expiry"],
+            )
+            if fut_candidates:
+                fut_inst = fut_candidates[0]
+                _log.debug(
+                    "kite.futures_resolved underlying=%s tradingsymbol=%s expiry=%s",
+                    underlying, fut_inst["tradingsymbol"], fut_inst["expiry"],
+                )
+            else:
+                _log.debug("kite.futures_not_found underlying=%s", underlying)
+
+        if not chain and fut_inst is None:
             return []
 
+        # Build single symbol list: CE/PE + FUT all in one batch (no extra quote call)
         syms = [f"NFO:{i['tradingsymbol']}" for i in chain]
+        if fut_inst:
+            syms.append(f"NFO:{fut_inst['tradingsymbol']}")
 
-        # Must use quote() not ltp() — ltp() only returns last_price.
-        # quote() returns oi, oi_day_high, oi_day_low, volume, and last_price.
+        # Must use quote() not ltp() — quote() returns oi, oi_day_high, oi_day_low, volume.
         # Kite quote() limit: 500 instruments per call — batch if needed.
         quote_data: dict = {}
         try:
@@ -269,9 +320,10 @@ class KiteMarketDataProvider(IMarketDataProvider):
             quote = quote_data.get(key, {})
             oi = int(quote.get("oi", 0))
             oi_day_low = int(quote.get("oi_day_low", 0))
-            # Kite has no direct oi_day_change field — approximate intraday OI change
-            # as (current OI - morning OI low) which reflects net buildup since open.
-            change_in_oi = max(0, oi - oi_day_low) if oi_day_low > 0 else 0
+            # Intraday OI change = current OI minus the day's opening low.
+            # Negative values (OI falling from open) are valid and required for
+            # SHORT_BUILDUP / LONG_BUILDUP / SHORT_COVERING pattern detection.
+            change_in_oi = (oi - oi_day_low) if oi_day_low > 0 else 0
             entries.append(OptionChainEntry(
                 symbol=inst["name"],
                 exchange="NFO",
@@ -284,6 +336,34 @@ class KiteMarketDataProvider(IMarketDataProvider):
                 volume=int(quote.get("volume", 0)),
                 instrument_token=int(inst["instrument_token"]),
             ))
+
+        # FUT entry — appended last; callers filter by option_type == "FUT"
+        if fut_inst:
+            key = f"NFO:{fut_inst['tradingsymbol']}"
+            quote = quote_data.get(key, {})
+            oi = int(quote.get("oi", 0))
+            entries.append(OptionChainEntry(
+                symbol=fut_inst["name"],
+                exchange="NFO",
+                expiry=fut_inst["expiry"],
+                strike=Decimal("0"),
+                option_type="FUT",
+                last_price=Decimal(str(quote.get("last_price", 0))),
+                open_interest=oi,
+                change_in_oi=0,
+                volume=int(quote.get("volume", 0)),
+                instrument_token=int(fut_inst["instrument_token"]),
+                tradingsymbol=fut_inst["tradingsymbol"],
+                oi_day_high=int(quote.get("oi_day_high", 0)),
+                oi_day_low=int(quote.get("oi_day_low", 0)),
+            ))
+            _log.debug(
+                "kite.futures_quote underlying=%s ts=%s oi=%d oi_dh=%d oi_dl=%d ltp=%s",
+                underlying, fut_inst["tradingsymbol"], oi,
+                int(quote.get("oi_day_high", 0)), int(quote.get("oi_day_low", 0)),
+                quote.get("last_price", "N/A"),
+            )
+
         return entries
 
     # ------------------------------------------------------------------

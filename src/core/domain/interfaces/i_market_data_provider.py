@@ -36,6 +36,7 @@ class IMarketDataProvider(ABC):
         self,
         underlying: str,
         expiry: date | None = None,
+        include_futures: bool = False,
     ) -> list[OptionChainEntry]: ...
 
     @abstractmethod
