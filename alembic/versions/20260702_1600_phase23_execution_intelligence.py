@@ -55,7 +55,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
         sa.Column("updated_at", sa.TIMESTAMP(timezone=True), server_default=sa.func.now()),
     )
-    op.create_index("ix_execution_events_signal_id", "execution_events", ["signal_id"])
     op.create_index("ix_execution_events_created_at", "execution_events", ["created_at"])
 
     # ── execution_latency: per-stage latency records ───────────────────────────
