@@ -30,7 +30,7 @@ SL / target sizing:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time as _dtime
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -39,6 +39,101 @@ if TYPE_CHECKING:
     from core.infrastructure.config.signal_config import IntradayRiskConfig
 
 _log = logging.getLogger(__name__)
+
+
+# ── Phase 22 §2 — Strike Quality Score ───────────────────────────────────────
+
+@dataclass
+class StrikeScore:
+    """Weighted quality score (0–100) for a single option contract."""
+    strike: float
+    opt_type: str
+    ltp: float
+    oi: int
+    total: float = 0.0
+    components: dict[str, float] = field(default_factory=dict)
+
+    def log_selection(self, symbol: str, underlying_price: float) -> None:
+        dist_pct = abs(self.strike - underlying_price) / underlying_price * 100
+        _log.info(
+            "strike_ranking.selected symbol=%s %s strike=%.0f ltp=%.2f oi=%d "
+            "score=%.1f/100 dist=%.1f%% components=%s",
+            symbol, self.opt_type, self.strike, self.ltp, self.oi,
+            self.total, dist_pct,
+            " ".join(f"{k}={v:.1f}" for k, v in self.components.items()),
+        )
+
+
+def _score_strike(
+    entry: dict[str, Any],
+    atm_price: float,
+    all_entries: list[dict[str, Any]],
+    opt_type: str,
+) -> StrikeScore:
+    """Compute weighted Strike Quality Score (0–100) for one contract."""
+    strike = float(entry.get("strike") or 0)
+    ltp    = float(entry.get("ltp") or 0)
+    oi     = int(entry.get("oi") or 0)
+    volume = int(entry.get("volume") or 0)
+
+    # Max OI and volume in the same-side chain (for normalisation)
+    side = [e for e in all_entries if str(e.get("option_type", "")).upper() == opt_type]
+    max_oi  = max((int(e.get("oi") or 0) for e in side), default=1) or 1
+    max_vol = max((int(e.get("volume") or 0) for e in side), default=1) or 1
+
+    # 1. OI Score (0–25): liquidity proxy
+    oi_score = min(oi / max_oi * 25, 25)
+
+    # 2. Volume Score (0–15)
+    vol_score = min(volume / max_vol * 15, 15) if max_vol > 0 else 0
+
+    # 3. Distance from ATM (0–20): closer = better
+    dist_pct = abs(strike - atm_price) / atm_price * 100 if atm_price > 0 else 100
+    dist_score = max(0, 20 - dist_pct * 4)
+
+    # 4. Premium suitability (0–15): sweet spot ₹10–₹150
+    if 10 <= ltp <= 150:
+        prem_score = 15.0
+    elif 4 <= ltp < 10 or 150 < ltp <= 300:
+        prem_score = 8.0
+    else:
+        prem_score = 2.0
+
+    # 5. Delta suitability (0–15): 0.25–0.45 is ideal for directional options
+    if atm_price > 0:
+        moneyness = (strike - atm_price) / atm_price
+        if opt_type == "PE":
+            moneyness = -moneyness
+        # Rough delta estimate: ATM ≈ 0.50, each 1% OTM ≈ -0.05 delta
+        approx_delta = max(0.05, min(0.95, 0.50 - moneyness * 5))
+        if 0.25 <= approx_delta <= 0.45:
+            delta_score = 15.0
+        elif 0.20 <= approx_delta < 0.25 or 0.45 < approx_delta <= 0.55:
+            delta_score = 10.0
+        else:
+            delta_score = 4.0
+    else:
+        delta_score = 7.5
+
+    # 6. Slippage estimate (0–10): low slippage = high OI (inverse)
+    slip_score = min(oi / 5000 * 10, 10)
+
+    total = oi_score + vol_score + dist_score + prem_score + delta_score + slip_score
+    return StrikeScore(
+        strike=strike,
+        opt_type=opt_type,
+        ltp=ltp,
+        oi=oi,
+        total=round(total, 2),
+        components={
+            "oi": round(oi_score, 1),
+            "vol": round(vol_score, 1),
+            "dist": round(dist_score, 1),
+            "prem": round(prem_score, 1),
+            "delta": round(delta_score, 1),
+            "slip": round(slip_score, 1),
+        },
+    )
 
 # Fallback constants used when no intraday_risk config is supplied
 _DEFAULT_GRADE_A_MIN  = 65.0
@@ -121,8 +216,9 @@ class OptionStrikeSelector:
         if not expiry_entries:
             return None
 
-        # Phase 3: rank candidates by OI within ATM ± _MAX_STRIKE_SPREAD
-        strike_entry = self._best_contract(expiry_entries, underlying_price)
+        # Phase 22 §2: rank by Strike Quality Score within ATM ± _MAX_STRIKE_SPREAD
+        underlying = str(expiry_entries[0].get("underlying", "?")) if expiry_entries else "?"
+        strike_entry = self._best_contract(expiry_entries, underlying_price, symbol=underlying)
         if strike_entry is None:
             return None
 
@@ -196,12 +292,13 @@ class OptionStrikeSelector:
     def _best_contract(
         entries: list[dict[str, Any]],
         atm_price: float,
+        symbol: str = "?",
     ) -> dict[str, Any] | None:
-        """Pick the most liquid contract within ATM ± _MAX_STRIKE_SPREAD strikes.
+        """Phase 22 §2: Pick highest Strike Quality Score within ATM ± spread.
 
-        Ranking: primary = OI descending (best liquidity proxy available),
-        secondary = proximity to ATM (prefer at-the-money for delta).
-        Falls back to absolute nearest if no entry meets the OI floor.
+        Uses weighted ranking (OI, volume, distance, premium, delta, slippage)
+        instead of simple OI-descending sort. Logs selection reasoning.
+        Falls back to absolute ATM if no candidate meets the OI floor.
         """
         if not entries:
             return None
@@ -211,9 +308,9 @@ class OptionStrikeSelector:
             return None
 
         atm_strike = min(strikes, key=lambda s: abs(s - atm_price))
-        atm_idx = strikes.index(atm_strike)
-        low_idx  = max(0, atm_idx - _MAX_STRIKE_SPREAD)
-        high_idx = min(len(strikes) - 1, atm_idx + _MAX_STRIKE_SPREAD)
+        atm_idx    = strikes.index(atm_strike)
+        low_idx    = max(0, atm_idx - _MAX_STRIKE_SPREAD)
+        high_idx   = min(len(strikes) - 1, atm_idx + _MAX_STRIKE_SPREAD)
         candidate_strikes = set(strikes[low_idx : high_idx + 1])
 
         candidates = [
@@ -224,16 +321,25 @@ class OptionStrikeSelector:
 
         if not candidates:
             # Fallback: absolute ATM ignoring OI floor
-            return min(entries, key=lambda e: abs(float(e.get("strike") or 0) - atm_price))
+            best = min(entries, key=lambda e: abs(float(e.get("strike") or 0) - atm_price))
+            _log.debug(
+                "strike_ranking.fallback_atm symbol=%s strike=%.0f oi=%d (no candidates met OI floor)",
+                symbol, float(best.get("strike") or 0), int(best.get("oi") or 0),
+            )
+            return best
 
-        # Rank by (OI desc, distance to ATM asc)
-        return max(
-            candidates,
-            key=lambda e: (
-                int(e.get("oi") or 0),
-                -abs(float(e.get("strike") or 0) - atm_price),
-            ),
+        # Phase 22 §2: compute Strike Quality Score for each candidate
+        opt_type = str(candidates[0].get("option_type", "CE")).upper()
+        scored = [_score_strike(e, atm_price, entries, opt_type) for e in candidates]
+        best_score = max(scored, key=lambda s: s.total)
+
+        # Find the matching entry
+        best_entry = next(
+            (e for e in candidates if float(e.get("strike") or 0) == best_score.strike),
+            candidates[0],
         )
+        best_score.log_selection(symbol, atm_price)
+        return best_entry
 
     @staticmethod
     def _expiry_str(entry: dict[str, Any]) -> str:

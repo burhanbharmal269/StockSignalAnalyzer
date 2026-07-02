@@ -33,8 +33,16 @@ from core.infrastructure.middleware.request_logging import RequestLoggingMiddlew
 from core.infrastructure.middleware.security_headers import SecurityHeadersMiddleware
 from core.infrastructure.observability.metrics import get_metrics_output
 import core.infrastructure.observability.trading_metrics  # noqa: F401 — registers metrics at import
-from core.domain.events.order_events import OrderFilled
-from core.domain.events.signal_events import SignalRiskApproved
+from core.domain.events.order_events import (
+    OrderCancelled,
+    OrderCreated,
+    OrderFilled,
+    OrderPartiallyFilled,
+    OrderRejected,
+    PositionClosed,
+    PositionOpened,
+)
+from core.domain.events.signal_events import SignalGenerated, SignalRiskApproved
 from core.presentation.api.v1.routers.auth_router import router as auth_router
 from core.presentation.api.v1.routers.broker_router import router as broker_router
 from core.presentation.api.v1.routers.capital_allocation_router import router as capital_allocation_router
@@ -71,6 +79,8 @@ from core.presentation.api.v1.routers.exit_intelligence_router import router as 
 from core.presentation.api.v1.routers.experiment_router import router as experiment_router
 from core.presentation.api.v1.routers.trade_management_router import router as trade_management_router
 from core.presentation.api.v1.routers.oi_analytics_router import router as oi_analytics_router
+from core.presentation.api.v1.routers.scanner_intelligence_router import router as scanner_intelligence_router
+from core.presentation.api.v1.routers.execution_intelligence_router import router as execution_intelligence_router
 
 logger = get_logger(__name__)
 
@@ -239,6 +249,46 @@ def create_app() -> FastAPI:
             consumer_name="pipeline_handler",
         )
 
+        # Phase 23: Execution Intelligence — subscribe non-invasively via separate consumer group
+        exec_handler = container.execution_event_handler()
+        _EI_GROUP = "execution_intelligence"
+        await event_bus.subscribe(
+            SignalGenerated, exec_handler.handle_signal_generated,
+            consumer_group=f"{_EI_GROUP}.signal_generated", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            SignalRiskApproved, exec_handler.handle_signal_risk_approved,
+            consumer_group=f"{_EI_GROUP}.signal_risk_approved", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            OrderCreated, exec_handler.handle_order_created,
+            consumer_group=f"{_EI_GROUP}.order_created", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            OrderFilled, exec_handler.handle_order_filled,
+            consumer_group=f"{_EI_GROUP}.order_filled", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            OrderRejected, exec_handler.handle_order_rejected,
+            consumer_group=f"{_EI_GROUP}.order_rejected", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            OrderCancelled, exec_handler.handle_order_cancelled,
+            consumer_group=f"{_EI_GROUP}.order_cancelled", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            OrderPartiallyFilled, exec_handler.handle_order_partially_filled,
+            consumer_group=f"{_EI_GROUP}.order_partially_filled", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            PositionOpened, exec_handler.handle_position_opened,
+            consumer_group=f"{_EI_GROUP}.position_opened", consumer_name="exec_intel",
+        )
+        await event_bus.subscribe(
+            PositionClosed, exec_handler.handle_position_closed,
+            consumer_group=f"{_EI_GROUP}.position_closed", consumer_name="exec_intel",
+        )
+
         # Phase 13 + 16.5: launch supervised background tasks
         registry = container.background_task_registry()
         portfolio_monitor = container.portfolio_monitor_service()
@@ -282,6 +332,29 @@ def create_app() -> FastAPI:
             logger.info("startup.index_candles_seeded", counts=counts)
         except Exception:
             logger.warning("startup.index_candles_seed_failed — NIFTY/BANKNIFTY may skip first scan")
+
+        # Phase 23: broker health monitor background loop
+        _broker_health_svc = container.broker_health_monitor_service()
+        _exec_latency_svc  = container.execution_latency_service()
+
+        async def _broker_health_loop() -> None:
+            while True:
+                try:
+                    await _broker_health_svc.update()
+                except Exception:
+                    logger.debug("broker_health_monitor.update failed")
+                await asyncio.sleep(60.0)
+
+        async def _latency_flush_loop() -> None:
+            while True:
+                await asyncio.sleep(30.0)
+                try:
+                    await _exec_latency_svc.flush()
+                except Exception:
+                    logger.debug("execution_latency.flush failed")
+
+        registry.register("broker_health_monitor", _broker_health_loop)
+        registry.register("execution_latency_flush", _latency_flush_loop)
 
         registry.register("portfolio_monitor", portfolio_monitor.run)
         registry.register("dead_mans_switch", dead_mans_switch.run)
@@ -410,6 +483,8 @@ def create_app() -> FastAPI:
             "core.presentation.api.v1.routers.platform_router",
             "core.presentation.api.v1.routers.trade_management_router",
             "core.presentation.api.v1.routers.oi_analytics_router",
+            "core.presentation.api.v1.routers.scanner_intelligence_router",
+            "core.presentation.api.v1.routers.execution_intelligence_router",
         ]
     )
     app.include_router(health_router)
@@ -448,6 +523,8 @@ def create_app() -> FastAPI:
     app.include_router(experiment_router, prefix="/api/v1")
     app.include_router(trade_management_router)
     app.include_router(oi_analytics_router, prefix="/api/v1")
+    app.include_router(scanner_intelligence_router, prefix="/api/v1")
+    app.include_router(execution_intelligence_router, prefix="/api/v1")
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics_endpoint() -> Response:

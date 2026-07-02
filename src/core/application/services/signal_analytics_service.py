@@ -268,8 +268,6 @@ class SignalAnalyticsService:
                         strategy_version, risk_version, target_version,
                         experiment_id, ab_group,
                         futures_oi, oi_change, oi_change_pct, oi_direction,
-                        oi_regime, futures_contract, oi_quality_score, quote_freshness_seconds,
-                        futures_oi, oi_change, oi_change_pct, oi_direction,
                         oi_regime, futures_contract, oi_quality_score, quote_freshness_seconds
                     ) VALUES (
                         :signal_id, :ticker, :exchange, :direction, :strategy_type, :regime,

@@ -1535,6 +1535,59 @@ class ApplicationContainer(containers.DeclarativeContainer):
         session_factory=db_session_factory,
     )
 
+    # ── Phase 22 services ─────────────────────────────────────────────────────
+    option_chain_intelligence_worker = providers.Singleton(
+        __import__(
+            "core.application.services.option_chain_intelligence_worker",
+            fromlist=["OptionChainIntelligenceWorker"],
+        ).OptionChainIntelligenceWorker,
+        option_chain_svc=option_chain_service,
+        universe_svc=market_universe_service,
+        redis_client=redis_client,
+    )
+
+    market_regime_snapshot_service = providers.Singleton(
+        __import__(
+            "core.application.services.market_regime_snapshot_service",
+            fromlist=["MarketRegimeSnapshotService"],
+        ).MarketRegimeSnapshotService,
+        session_factory=db_session_factory,
+    )
+
+    scanner_replay_service = providers.Singleton(
+        __import__(
+            "core.application.services.scanner_replay_service",
+            fromlist=["ScannerReplayService"],
+        ).ScannerReplayService,
+        session_factory=db_session_factory,
+    )
+
+    execution_readiness_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_readiness_service",
+            fromlist=["ExecutionReadinessService"],
+        ).ExecutionReadinessService,
+        redis_client=redis_client,
+    )
+
+    indicator_cache_service = providers.Singleton(
+        __import__(
+            "core.application.services.indicator_cache_service",
+            fromlist=["IndicatorCacheService"],
+        ).IndicatorCacheService,
+        redis_client=redis_client,
+    )
+
+    resource_monitor_service = providers.Singleton(
+        __import__(
+            "core.application.services.resource_monitor_service",
+            fromlist=["ResourceMonitorService"],
+        ).ResourceMonitorService,
+        redis_client=redis_client,
+        db_engine=db_write_engine,
+    )
+    # ─────────────────────────────────────────────────────────────────────────
+
     signal_scanner_service: providers.Singleton[SignalScannerService] = providers.Singleton(
         SignalScannerService,
         universe_svc=market_universe_service,
@@ -1551,6 +1604,11 @@ class ApplicationContainer(containers.DeclarativeContainer):
         portfolio_svc=portfolio_intelligence_service,
         scan_metrics_svc=scan_metrics_service,
         futures_oi_svc=futures_oi_service,
+        oc_intel_worker=option_chain_intelligence_worker,
+        regime_snapshot_svc=market_regime_snapshot_service,
+        scanner_replay_svc=scanner_replay_service,
+        exec_readiness_svc=execution_readiness_service,
+        indicator_cache_svc=indicator_cache_service,
     )
 
     expired_trade_intelligence_service: providers.Singleton[ExpiredTradeIntelligenceService] = providers.Singleton(
@@ -1588,6 +1646,7 @@ class ApplicationContainer(containers.DeclarativeContainer):
         ).OptionChainPollerService,
         universe_svc=market_universe_service,
         option_chain_svc=option_chain_service,
+        oc_intel_worker=option_chain_intelligence_worker,
     )
 
     news_aggregation_service = providers.Singleton(
@@ -1808,5 +1867,87 @@ class ApplicationContainer(containers.DeclarativeContainer):
         observability_svc=operator_observability_service,
         portfolio_svc=portfolio_intelligence_service,
         strategy_evo_svc=strategy_evolution_service,
+    )
+
+    # ── Phase 23: Execution Intelligence ──────────────────────────────────────
+
+    execution_timeline_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_timeline_service",
+            fromlist=["ExecutionTimelineService"],
+        ).ExecutionTimelineService,
+        session_factory=db_session_factory,
+    )
+
+    execution_latency_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_latency_service",
+            fromlist=["ExecutionLatencyService"],
+        ).ExecutionLatencyService,
+        session_factory=db_session_factory,
+        redis_client=redis_client,
+    )
+
+    execution_slippage_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_slippage_service",
+            fromlist=["ExecutionSlippageService"],
+        ).ExecutionSlippageService,
+        session_factory=db_session_factory,
+    )
+
+    execution_retry_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_retry_service",
+            fromlist=["ExecutionRetryService"],
+        ).ExecutionRetryService,
+        session_factory=db_session_factory,
+    )
+
+    execution_rejection_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_rejection_service",
+            fromlist=["ExecutionRejectionService"],
+        ).ExecutionRejectionService,
+        session_factory=db_session_factory,
+    )
+
+    execution_replay_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_replay_service",
+            fromlist=["ExecutionReplayService"],
+        ).ExecutionReplayService,
+        session_factory=db_session_factory,
+    )
+
+    broker_health_monitor_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.broker_health_monitor_service",
+            fromlist=["BrokerHealthMonitorService"],
+        ).BrokerHealthMonitorService,
+        session_factory=db_session_factory,
+        redis_client=redis_client,
+    )
+
+    execution_historical_service = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_historical_service",
+            fromlist=["ExecutionHistoricalService"],
+        ).ExecutionHistoricalService,
+        session_factory=db_session_factory,
+    )
+
+    execution_event_handler = providers.Singleton(
+        __import__(
+            "core.application.services.execution_intelligence.execution_event_handler",
+            fromlist=["ExecutionEventHandler"],
+        ).ExecutionEventHandler,
+        timeline_svc=execution_timeline_service,
+        latency_svc=execution_latency_service,
+        slippage_svc=execution_slippage_service,
+        retry_svc=execution_retry_service,
+        rejection_svc=execution_rejection_service,
+        replay_svc=execution_replay_service,
+        broker_health_svc=broker_health_monitor_service,
     )
 

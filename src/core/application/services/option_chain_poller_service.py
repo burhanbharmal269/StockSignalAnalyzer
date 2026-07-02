@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.application.services.market_universe_service import MarketUniverseService
+    from core.application.services.option_chain_intelligence_worker import OptionChainIntelligenceWorker
     from core.application.services.option_chain_service import OptionChainService
 
 _log = logging.getLogger(__name__)
@@ -39,10 +40,12 @@ class OptionChainPollerService:
         universe_svc: "MarketUniverseService",
         option_chain_svc: "OptionChainService",
         poll_interval_seconds: int = _POLL_INTERVAL_SECONDS,
+        oc_intel_worker: "OptionChainIntelligenceWorker | None" = None,
     ) -> None:
         self._universe = universe_svc
         self._option_chain = option_chain_svc
         self._interval = poll_interval_seconds
+        self._oc_intel_worker = oc_intel_worker
 
     async def run(self) -> None:
         _log.info("option_chain_poller_service.started interval_secs=%d", self._interval)
@@ -82,6 +85,13 @@ class OptionChainPollerService:
             "option_chain_poller_service.cycle_done ok=%d fail=%d total=%d",
             ok, fail, len(batch),
         )
+        # Phase 22 §1: populate Redis OC intel cache after each poll cycle
+        if self._oc_intel_worker is not None:
+            try:
+                await self._oc_intel_worker.run_cycle()
+                _log.debug("option_chain_poller_service.oc_intel_cycle_done")
+            except Exception as _ie:
+                _log.debug("option_chain_poller_service.oc_intel_failed: %s", _ie)
 
     async def _fetch_one(self, ticker: str, sem: asyncio.Semaphore) -> bool:
         async with sem:

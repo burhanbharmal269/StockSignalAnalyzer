@@ -31,16 +31,21 @@ if TYPE_CHECKING:
     from core.application.services.data_quality_service import DataQualityService
     from core.application.services.event_calendar_service import EventCalendarService
     from core.application.services.execution_lock_service import ExecutionLockService
+    from core.application.services.execution_readiness_service import ExecutionReadinessService
     from core.application.services.futures_oi_service import FuturesOIService
+    from core.application.services.indicator_cache_service import IndicatorCacheService
     from core.application.services.market_breadth_service import MarketBreadthService
     from core.application.services.market_context_engine import MarketContextEngine
     from core.application.services.market_data.historical_data_service import HistoricalDataService
+    from core.application.services.market_regime_snapshot_service import MarketRegimeSnapshotService
     from core.application.services.market_universe_service import MarketUniverseService
+    from core.application.services.option_chain_intelligence_worker import OptionChainIntelligenceWorker
     from core.application.services.option_chain_service import OptionChainService
     from core.application.services.overlay_pipeline import OverlayPipeline
     from core.application.services.portfolio_intelligence_service import PortfolioIntelligenceService
     from core.application.services.risk_manager_service import RiskManagerService
     from core.application.services.scan_metrics_service import ScanMetricsService
+    from core.application.services.scanner_replay_service import ScannerReplayService
     from core.application.services.signal_analytics_service import SignalAnalyticsService
     from core.application.services.signal_engine_service import SignalEngineService
     from core.domain.value_objects.market_context_snapshot import MarketContextSnapshot
@@ -615,6 +620,12 @@ class SignalScannerService:
         portfolio_svc: "PortfolioIntelligenceService | None" = None,
         scan_metrics_svc: "ScanMetricsService | None" = None,
         futures_oi_svc: "FuturesOIService | None" = None,
+        # Phase 22 additions
+        oc_intel_worker: "OptionChainIntelligenceWorker | None" = None,
+        regime_snapshot_svc: "MarketRegimeSnapshotService | None" = None,
+        scanner_replay_svc: "ScannerReplayService | None" = None,
+        exec_readiness_svc: "ExecutionReadinessService | None" = None,
+        indicator_cache_svc: "IndicatorCacheService | None" = None,
     ) -> None:
         from core.application.services.data_quality_service import DataQualityService
         from core.application.services.option_strike_selector import OptionStrikeSelector
@@ -633,6 +644,11 @@ class SignalScannerService:
         self._portfolio_svc    = portfolio_svc
         self._scan_metrics     = scan_metrics_svc
         self._futures_oi_svc  = futures_oi_svc
+        self._oc_intel_worker  = oc_intel_worker
+        self._regime_snapshot_svc = regime_snapshot_svc
+        self._scanner_replay_svc  = scanner_replay_svc
+        self._exec_readiness_svc  = exec_readiness_svc
+        self._indicator_cache_svc = indicator_cache_svc
         self._dq_service      = DataQualityService()
         self._strike_selector = OptionStrikeSelector()
         self._running         = False
@@ -799,37 +815,53 @@ class SignalScannerService:
             "stale_candles",
         })
         gate_counts: dict[str, int] = {}
-        results  = await asyncio.gather(
+        symbol_timings: dict[str, float] = {}
+        raw_results = await asyncio.gather(
             *[
                 self._process_symbol_sem(sym, semaphore, india_vix, market_ctx, event_cache, portfolio_ctx)
                 for sym in candidates
             ],
             return_exceptions=True,
         )
-        for res in results:
+        for sym, res in zip(candidates, raw_results):
             if isinstance(res, Exception):
                 errors += 1
                 _log.warning(
                     "signal_scanner.symbol_exception type=%s msg=%s",
                     type(res).__name__, str(res),
                 )
-            elif res == "accepted":
-                accepted += 1
-            elif res == "rejected":
-                rejected += 1
-            elif res in _GATE_OUTCOMES:
-                gated += 1
-                gate_counts[res] = gate_counts.get(res, 0) + 1
+                symbol_timings[sym.symbol] = 0.0
             else:
-                errors += 1
+                outcome, elapsed_ms = res
+                symbol_timings[sym.symbol] = elapsed_ms
+                if outcome == "accepted":
+                    accepted += 1
+                elif outcome == "rejected":
+                    rejected += 1
+                elif outcome in _GATE_OUTCOMES:
+                    gated += 1
+                    gate_counts[outcome] = gate_counts.get(outcome, 0) + 1
+                else:
+                    errors += 1
 
         _cycle_dur = time.monotonic() - _cycle_start
+
+        # P95 / slowest symbol stats
+        _timings_vals = sorted(symbol_timings.values()) if symbol_timings else []
+        _p95_ms: float | None = None
+        if _timings_vals:
+            _p95_idx = max(0, int(len(_timings_vals) * 0.95) - 1)
+            _p95_ms = _timings_vals[_p95_idx]
+        _slowest_sym = max(symbol_timings, key=lambda s: symbol_timings[s], default=None) if symbol_timings else None
+        _slowest_ms  = symbol_timings.get(_slowest_sym, 0.0) if _slowest_sym else None
+
         # Build per-gate breakdown for diagnostics (only show gates that fired)
         _gate_detail = " ".join(f"{g}={n}" for g, n in sorted(gate_counts.items()) if n > 0)
         _log.info(
             "signal_scanner.cycle_summary accepted=%d rejected=%d gated=%d errors=%d "
-            "candidates=%d duration_secs=%.1f gates=[%s]",
-            accepted, rejected, gated, errors, len(candidates), _cycle_dur, _gate_detail,
+            "candidates=%d duration_secs=%.1f p95_ms=%.0f slowest=%s gates=[%s]",
+            accepted, rejected, gated, errors, len(candidates), _cycle_dur,
+            _p95_ms or 0, _slowest_sym or "n/a", _gate_detail,
         )
         # Alert when stale_candles dominates — indicates Kite historical API failure
         _stale = gate_counts.get("stale_candles", 0)
@@ -840,6 +872,51 @@ class SignalScannerService:
                 _stale, len(candidates),
             )
 
+        # Phase 22 §3: classify and store market regime snapshot once per cycle
+        _regime_snap: dict | None = None
+        if self._regime_snapshot_svc is not None:
+            try:
+                _breadth_latest = await self._breadth_svc.get_latest() if self._breadth_svc else None
+                _bs = (_breadth_latest or {}).get("breadth_score", 0.0)
+                _adr = (_breadth_latest or {}).get("advance_decline_ratio", 1.0)
+                _nifty_regime = market_ctx.nifty_regime if market_ctx else "NORMAL"
+                _event_active = bool(event_cache) if event_cache else False
+                _regime_snap = await self._regime_snapshot_svc.classify_and_store(
+                    vix=india_vix,
+                    nifty_regime=_nifty_regime,
+                    breadth_score=_bs,
+                    advance_decline_ratio=_adr,
+                    nifty_close=None,
+                    event_active=_event_active,
+                )
+            except Exception as _rs_exc:
+                _log.debug("signal_scanner.regime_snapshot_failed: %s", _rs_exc)
+
+        # Phase 22 §12: record scan replay snapshot
+        if self._scanner_replay_svc is not None:
+            try:
+                await self._scanner_replay_svc.record(
+                    scan_duration_seconds=_cycle_dur,
+                    total_candidates=len(candidates),
+                    accepted=accepted,
+                    rejected=rejected,
+                    gated=gated,
+                    symbol_results=[
+                        {
+                            "symbol": sym.symbol,
+                            "outcome": (raw_results[i][0] if not isinstance(raw_results[i], Exception) else "error"),
+                            "elapsed_ms": symbol_timings.get(sym.symbol, 0.0),
+                        }
+                        for i, sym in enumerate(candidates)
+                    ],
+                    gate_summary=gate_counts,
+                    market_context={"nifty_regime": market_ctx.nifty_regime if market_ctx else None,
+                                    "india_vix": india_vix},
+                    regime_snapshot=_regime_snap,
+                )
+            except Exception as _rp_exc:
+                _log.debug("signal_scanner.replay_record_failed: %s", _rp_exc)
+
         if self._scan_metrics is not None:
             exec_mode: str | None = None
             if self._exec_lock_svc is not None:
@@ -847,6 +924,9 @@ class SignalScannerService:
                     exec_mode = (await self._exec_lock_svc.get_mode()).value
                 except Exception:
                     pass
+            # Simple health score: 100 - error_rate_pct - stale_pct
+            _total = len(candidates) or 1
+            _health = max(0.0, 100.0 - (errors / _total * 50) - (_stale / _total * 30))
             await self._scan_metrics.record(
                 scan_duration_seconds=round(_cycle_dur, 2),
                 symbols_scanned=len(candidates),
@@ -857,6 +937,13 @@ class SignalScannerService:
                 india_vix=india_vix,
                 market_context=market_ctx.nifty_regime if market_ctx else None,
                 execution_mode=exec_mode,
+                gate_failures=gate_counts if gate_counts else None,
+                symbol_timings=symbol_timings if symbol_timings else None,
+                p95_symbol_time_ms=_p95_ms,
+                slowest_symbol=_slowest_sym,
+                slowest_symbol_ms=_slowest_ms,
+                health_score=round(_health, 1),
+                regime_snapshot=_regime_snap,
             )
 
         return {
@@ -875,12 +962,22 @@ class SignalScannerService:
         market_ctx: "MarketContextSnapshot | None" = None,
         event_cache: dict | None = None,
         portfolio_ctx: "PortfolioContext | None" = None,
-    ) -> str:
+    ) -> tuple[str, float]:
+        """Returns (outcome, elapsed_ms). Applies 30-second per-symbol timeout."""
+        _t0 = time.monotonic()
         async with semaphore:
-            return await self._process_symbol(
-                sym, india_vix=india_vix, market_ctx=market_ctx,
-                event_cache=event_cache or {}, portfolio_ctx=portfolio_ctx,
-            )
+            try:
+                outcome = await asyncio.wait_for(
+                    self._process_symbol(
+                        sym, india_vix=india_vix, market_ctx=market_ctx,
+                        event_cache=event_cache or {}, portfolio_ctx=portfolio_ctx,
+                    ),
+                    timeout=30.0,
+                )
+            except asyncio.TimeoutError:
+                _log.warning("signal_scanner.symbol_timeout symbol=%s", sym.symbol)
+                outcome = "rejected"
+        return outcome, round((time.monotonic() - _t0) * 1000, 1)
 
     async def _process_symbol(
         self,
@@ -1740,6 +1837,27 @@ class SignalScannerService:
         iv_skew: float | None = data.get("iv_skew")
         gex_positive: bool | None = data.get("gex_positive")  # True = price-suppressing regime
         gex_strike: float | None = None  # not yet surfaced by get_latest(); available in analysis dict
+
+        # Phase 22 §1: Layer in Redis OC intel (call_wall, put_wall, liquidity, atm_iv)
+        # Redis cache is warmer/more recent than DB snapshot; supplement DB-derived values.
+        if self._oc_intel_worker is not None:
+            try:
+                _intel = await self._oc_intel_worker.get_cached(symbol)
+                if _intel:
+                    if call_wall_pct is None and _intel.get("resistance_strike") and close_price > 0:
+                        _rs = float(_intel["resistance_strike"])
+                        call_wall_pct = ((_rs - close_price) / close_price * 100) if _rs > close_price else call_wall_pct
+                    if put_wall_pct is None and _intel.get("support_strike") and close_price > 0:
+                        _ss = float(_intel["support_strike"])
+                        put_wall_pct = ((close_price - _ss) / close_price * 100) if _ss < close_price else put_wall_pct
+                    if iv_percentile is None and _intel.get("atm_iv"):
+                        iv_percentile = float(_intel["atm_iv"])
+                    if max_pain == 0.0 and _intel.get("max_pain"):
+                        max_pain = float(_intel["max_pain"])
+                    if pcr == 0.0 and _intel.get("pcr"):
+                        pcr = float(_intel["pcr"])
+            except Exception as _ic_exc:
+                _log.debug("signal_scanner.oc_intel_read_failed symbol=%s: %s", symbol, _ic_exc)
 
         snap = OptionChainSnapshot(
             iv_percentile=iv_percentile,
