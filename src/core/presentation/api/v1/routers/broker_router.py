@@ -23,6 +23,7 @@ from core.domain.interfaces.i_broker_session_repository import IBrokerSessionRep
 from core.domain.interfaces.i_kill_switch_repository import IKillSwitchRepository
 from core.infrastructure.broker.broker_session_manager import BrokerSessionManager
 from core.infrastructure.config.broker_config import BrokerConfig
+from core.infrastructure.config.settings import AppSettings
 from core.domain.value_objects.broker_health import BrokerHealthStatus
 from core.presentation.api.v1.dependencies.auth import require_admin, require_no_force_change
 from core.presentation.api.v1.schemas.auth import CurrentUser
@@ -260,13 +261,15 @@ class KiteCallbackRequest(BaseModel):
     summary="Kite OAuth redirect handler — forwards request_token to frontend",
     include_in_schema=False,
 )
+@inject
 async def kite_callback_redirect(
     request_token: str = Query(default=""),
     status: str = Query(default=""),
+    settings: AppSettings = Depends(Provide[ApplicationContainer.settings]),  # noqa: B008
 ) -> RedirectResponse:
     """Zerodha redirects here after OAuth. Forward to frontend so the user can activate."""
     return RedirectResponse(
-        url=f"http://localhost:3000/broker?request_token={request_token}&status={status}",
+        url=f"{settings.frontend_url}/broker?request_token={request_token}&status={status}",
         status_code=302,
     )
 

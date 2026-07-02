@@ -55,6 +55,9 @@ services:
       - LOG_FORMAT=console
       - API_HOST=0.0.0.0
       - API_PORT=8000
+      # Public frontend origin — used for server-side redirects (e.g. Kite OAuth
+      # callback). Set FRONTEND_URL in .env for real deployments.
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       # Override localhost URLs to point at docker service names
       - DATABASE_WRITE_URL=postgresql+asyncpg://trading:trading@postgres:5432/trading
       - DATABASE_READ_URL=postgresql+asyncpg://trading:trading@postgres:5432/trading

@@ -55,6 +55,9 @@ class AppSettings(BaseSettings):
     api_host: str = Field(default="0.0.0.0")  # noqa: S104
     api_port: int = Field(default=8000, ge=1024, le=65535)
 
+    # --- Frontend (for server-side redirects, e.g. Kite OAuth callback) ------
+    frontend_url: str = Field(default="http://localhost:3000")
+
     # --- Logging -------------------------------------------------------------
     log_level: LogLevel = Field(default=LogLevel.INFO)
     log_format: LogFormat = Field(default=LogFormat.CONSOLE)

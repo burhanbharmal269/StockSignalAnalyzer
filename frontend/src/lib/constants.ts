@@ -1,9 +1,20 @@
-// Falls back to the hostname the browser used to load the page (not a hardcoded
-// "localhost") so the same build works when accessed via a VM IP or domain name.
-const _defaultHost = typeof window !== "undefined" ? window.location.hostname : "localhost";
+// Defaults to same-origin so requests go through the reverse proxy (nginx) that
+// routes /api and /ws to the backend on the same domain/port as the frontend —
+// no hardcoded host or port. Only overridden when NEXT_PUBLIC_API_URL/WS_URL
+// are explicitly set at build time (e.g. backend hosted on a different origin).
+function _defaultApiBase(): string {
+  if (typeof window === "undefined") return "http://localhost:8000";
+  return window.location.origin;
+}
 
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? `http://${_defaultHost}:8000`;
-export const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL ?? `ws://${_defaultHost}:8000`;
+function _defaultWsBase(): string {
+  if (typeof window === "undefined") return "ws://localhost:8000";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}`;
+}
+
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? _defaultApiBase();
+export const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_URL ?? _defaultWsBase();
 export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "SSA Trading Dashboard";
 
 export const TOKEN_KEY = "ssa_access_token";
