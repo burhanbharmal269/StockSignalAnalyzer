@@ -24,7 +24,7 @@ class SqlAlchemyNewsRepository:
                         (source, title, content, url, content_hash, published_at, symbols, categories)
                     VALUES
                         (:source, :title, :content, :url, :content_hash, :published_at,
-                         :symbols::jsonb, :categories::jsonb)
+                         CAST(:symbols AS jsonb), CAST(:categories AS jsonb))
                     ON CONFLICT (content_hash) DO NOTHING
                     RETURNING id
                 """), {

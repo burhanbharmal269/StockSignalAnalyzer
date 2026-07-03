@@ -209,7 +209,7 @@ class MarketBreadthService:
                      advance_decline_ratio, breadth_score, above_200dma_pct, sector_data)
                 VALUES
                     (:adv, :dec, :unc, :new_highs, :new_lows, :ad_ratio,
-                     :breadth_score, :above_200, :sector_data::jsonb)
+                     :breadth_score, :above_200, CAST(:sector_data AS jsonb))
             """), {
                 "adv": snapshot["advances"],
                 "dec": snapshot["declines"],

@@ -175,7 +175,7 @@ class MarketAnalystService:
                     INSERT INTO ai_insights
                         (insight_type, symbol, content, model_used, token_count)
                     VALUES
-                        ('MARKET_DAILY', 'MARKET', :content::jsonb, :model, 0)
+                        ('MARKET_DAILY', 'MARKET', CAST(:content AS jsonb), :model, 0)
                 """), {
                     "content": json.dumps(insight, default=str),
                     "model": self._ai._config.ai_model if self._ai._config.is_enabled else "rule_based",

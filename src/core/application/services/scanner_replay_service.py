@@ -61,8 +61,8 @@ class ScannerReplayService:
                          gate_summary, regime_snapshot, stage_timings)
                     VALUES
                         (:at, :dur, :tc, :acc, :rej, :gat,
-                         :mc::jsonb, :sr::jsonb, :ts_::jsonb,
-                         :gs::jsonb, :rs::jsonb, :stg::jsonb)
+                         CAST(:mc AS jsonb), CAST(:sr AS jsonb), CAST(:ts_ AS jsonb),
+                         CAST(:gs AS jsonb), CAST(:rs AS jsonb), CAST(:stg AS jsonb))
                     RETURNING id
                 """), {
                     "at":  now,

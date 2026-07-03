@@ -575,11 +575,14 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         max_pain_price=max_pain,
     )
 
-    # RiskRequest only accepts "FUTURE" or "OPTION" — not "STOCK_FUTURE"/"INDEX_FUTURE"
+    # We trade OPTIONS on the underlying — use "OPTION" so the risk engine applies
+    # option-delta math (0.5 × lot_size) instead of futures-delta (1.0 × lot_size).
+    # Using "FUTURE" caused large-lot stocks (BANKBARODA 2925, UNIONBANK 4425) to
+    # always exceed the NET_DELTA_LIMIT of 2500.
     return SignalRequest(
         instrument_token=token,
         underlying=symbol,
-        instrument_class="FUTURE",
+        instrument_class="OPTION",
         expiry_date=expiry,
         strategy_type=strategy,
         asset_type=AssetType.FNO,

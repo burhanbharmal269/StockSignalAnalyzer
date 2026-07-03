@@ -70,9 +70,9 @@ class ScanMetricsService:
                         " health_score, regime_snapshot) "
                         "VALUES (:at, :dur, :sc, :sf, :sg, :sr, :sgd, "
                         "        :as_, :ac, :adq, :vix, :mc, :em, :gf, "
-                        "        :stg::jsonb, :ts_::jsonb, :symt::jsonb, "
+                        "        CAST(:stg AS jsonb), CAST(:ts_ AS jsonb), CAST(:symt AS jsonb), "
                         "        :p95, :slow_sym, :slow_ms, "
-                        "        :hs, :rs::jsonb)"
+                        "        :hs, CAST(:rs AS jsonb))"
                     ),
                     {
                         "at":       now,

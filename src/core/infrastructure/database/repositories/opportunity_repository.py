@@ -26,7 +26,7 @@ class SqlAlchemyOpportunityRepository:
                      confidence, direction, regime, meta, expires_at)
                 VALUES
                     (:symbol, :opp_type, :tech, :vol, :sent, :oi, :reg,
-                     :total, :conf, :dir, :regime, :meta::jsonb, :expires_at)
+                     :total, :conf, :dir, :regime, CAST(:meta AS jsonb), :expires_at)
             """), {
                 "symbol": opp.symbol, "opp_type": opp.opportunity_type,
                 "tech": float(opp.technical_score or 0),
@@ -92,7 +92,7 @@ class SqlAlchemyBacktestRepository:
                     (run_id, strategy_name, params, symbols, timeframe,
                      start_date, end_date, status, error_message, completed_at)
                 VALUES
-                    (:run_id, :strategy, :params::jsonb, :symbols::jsonb,
+                    (:run_id, :strategy, CAST(:params AS jsonb), CAST(:symbols AS jsonb),
                      :timeframe, :start_date, :end_date, :status, :error, :completed_at)
                 ON CONFLICT (run_id) DO UPDATE SET
                     status=EXCLUDED.status, error_message=EXCLUDED.error_message,

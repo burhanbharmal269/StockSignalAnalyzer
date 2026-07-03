@@ -211,7 +211,7 @@ class ExecutionLatencyService:
                         r->>'stage', (r->>'duration_ms')::float,
                         (r->>'time_of_day')::time, r->>'regime',
                         (r->>'recorded_at')::timestamptz
-                    FROM jsonb_array_elements(:rows::jsonb) AS r
+                    FROM jsonb_array_elements(CAST(:rows AS jsonb)) AS r
                 """), {"rows": json.dumps(records)})
                 await db.commit()
         except Exception as exc:

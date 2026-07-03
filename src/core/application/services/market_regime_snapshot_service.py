@@ -149,7 +149,7 @@ class MarketRegimeSnapshotService:
                      breadth_score, advance_decline_ratio, is_expiry_day, gap_pct, indicators)
                 VALUES
                     (NOW(), :regime, :sub, :vix, :vix_r, :nifty_r,
-                     :breadth, :ad_ratio, :expiry, :gap, :indicators::jsonb)
+                     :breadth, :ad_ratio, :expiry, :gap, CAST(:indicators AS jsonb))
             """), {
                 "regime":    snap["regime"],
                 "sub":       snap.get("sub_regime"),
