@@ -86,6 +86,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        BACKEND_URL: http://backend:8000
     image: ssa-frontend:dev
     container_name: ssa_frontend
     environment:
