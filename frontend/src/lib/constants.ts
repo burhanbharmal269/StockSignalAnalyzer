@@ -1,7 +1,7 @@
-// Defaults to same-origin so requests go through the reverse proxy (nginx) that
-// routes /api and /ws to the backend on the same domain/port as the frontend —
-// no hardcoded host or port. Only overridden when NEXT_PUBLIC_API_URL/WS_URL
-// are explicitly set at build time (e.g. backend hosted on a different origin).
+// API calls go through Next.js rewrites (same origin) so they reach the backend
+// regardless of which host/port the browser is on. WebSocket connects directly
+// to the exposed backend port (8000) because Next.js cannot proxy WS upgrades.
+// No build-time env vars needed — both URLs derive from window.location at runtime.
 function _defaultApiBase(): string {
   if (typeof window === "undefined") return "http://localhost:8000";
   return window.location.origin;
@@ -10,7 +10,9 @@ function _defaultApiBase(): string {
 function _defaultWsBase(): string {
   if (typeof window === "undefined") return "ws://localhost:8000";
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}`;
+  // Use hostname (not host) so the WS targets the backend port 8000 directly,
+  // not the Next.js port 3000 which can't upgrade connections.
+  return `${proto}//${window.location.hostname}:8000`;
 }
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? _defaultApiBase();

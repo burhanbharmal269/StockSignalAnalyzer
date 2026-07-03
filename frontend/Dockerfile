@@ -13,13 +13,11 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-# BACKEND_URL is needed at build time so next.config rewrites resolve correctly
+# BACKEND_URL is needed at build time so next.config rewrites resolve correctly.
+# WS URL is NOT baked in — constants.ts derives it at runtime from
+# window.location.hostname:8000 so the image works on any host or VM.
 ARG BACKEND_URL=http://backend:8000
 ENV BACKEND_URL=${BACKEND_URL}
-# WS must connect directly to the exposed backend port from the browser.
-# Next.js rewrites don't proxy WebSocket upgrades, so same-origin ws:// won't work.
-ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
-ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
 RUN npm run build
 
 # Runner
