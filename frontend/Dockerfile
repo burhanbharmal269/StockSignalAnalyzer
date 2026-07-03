@@ -16,6 +16,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # BACKEND_URL is needed at build time so next.config rewrites resolve correctly
 ARG BACKEND_URL=http://backend:8000
 ENV BACKEND_URL=${BACKEND_URL}
+# WS must connect directly to the exposed backend port from the browser.
+# Next.js rewrites don't proxy WebSocket upgrades, so same-origin ws:// won't work.
+ARG NEXT_PUBLIC_WS_URL=ws://localhost:8000
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
 RUN npm run build
 
 # Runner
