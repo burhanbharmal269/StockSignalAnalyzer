@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 _log = logging.getLogger(__name__)
 
-_WEIGHTS_PATH = pathlib.Path(__file__).resolve().parents[6] / "config" / "scoring_weights.yaml"
+_WEIGHTS_PATH = pathlib.Path(__file__).resolve().parents[5] / "config" / "scoring_weights.yaml"
 _V1_NAME = "Production-V1"
 
 
@@ -64,7 +64,7 @@ class StrategyVersionService:
                          is_immutable, base_version_id, scoring_weights_sha256,
                          created_at, updated_at)
                     VALUES
-                        (:id, :name, :desc, :weights::jsonb, :params::jsonb,
+                        (:id, :name, :desc, CAST(:weights AS jsonb), CAST(:params AS jsonb),
                          true, null, :sha, NOW(), NOW())
                 """),
                 {
@@ -123,7 +123,7 @@ class StrategyVersionService:
                         (id, name, description, weights_snapshot, params_snapshot,
                          is_immutable, base_version_id, created_at, updated_at)
                     VALUES
-                        (:id, :name, :desc, :weights::jsonb, :params::jsonb,
+                        (:id, :name, :desc, CAST(:weights AS jsonb), CAST(:params AS jsonb),
                          false, :base_id, NOW(), NOW())
                 """),
                 {
@@ -160,10 +160,10 @@ class StrategyVersionService:
             updates: list[str] = ["updated_at = NOW()"]
             bind: dict[str, Any] = {"id": version_id}
             if weights is not None:
-                updates.append("weights_snapshot = :weights::jsonb")
+                updates.append("weights_snapshot = CAST(:weights AS jsonb)")
                 bind["weights"] = json.dumps(weights)
             if params is not None:
-                updates.append("params_snapshot = :params::jsonb")
+                updates.append("params_snapshot = CAST(:params AS jsonb)")
                 bind["params"] = json.dumps(params)
 
             await db.execute(

@@ -47,7 +47,7 @@ class MonteCarloSimulationService:
                     INSERT INTO research_runs
                         (id, version_id, run_type, status, params, started_at, created_at)
                     VALUES
-                        (:id, :vid, 'MONTE_CARLO', 'RUNNING', :params::jsonb, NOW(), NOW())
+                        (:id, :vid, 'MONTE_CARLO', 'RUNNING', CAST(:params AS jsonb), NOW(), NOW())
                 """),
                 {
                     "id": run_id, "vid": version_id,

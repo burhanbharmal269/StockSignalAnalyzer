@@ -56,7 +56,7 @@ class WalkForwardAnalyzerService:
                         (id, version_id, run_type, status, params, started_at, created_at)
                     VALUES
                         (:id, :vid, 'WALK_FORWARD', 'RUNNING',
-                         :params::jsonb, NOW(), NOW())
+                         CAST(:params AS jsonb), NOW(), NOW())
                 """),
                 {
                     "id": run_id, "vid": version_id,
@@ -198,7 +198,7 @@ class WalkForwardAnalyzerService:
                                 (:rid, :idx,
                                  :tf, :tt, :vf, :vt, :sf2, :st,
                                  :is_sh, :oos_sh, :oos_wr, :oos_cnt,
-                                 :oos_pnl, :bp::jsonb, NOW())
+                                 :oos_pnl, CAST(:bp AS jsonb), NOW())
                         """),
                         {
                             "rid": run_id, "idx": i,

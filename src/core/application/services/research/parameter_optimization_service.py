@@ -54,7 +54,7 @@ class ParameterOptimizationService:
                     INSERT INTO research_runs
                         (id, version_id, run_type, status, params, started_at, created_at)
                     VALUES
-                        (:id, :vid, 'GRID_SEARCH', 'RUNNING', :params::jsonb, NOW(), NOW())
+                        (:id, :vid, 'GRID_SEARCH', 'RUNNING', CAST(:params AS jsonb), NOW(), NOW())
                 """),
                 {"id": run_id, "vid": version_id, "params": json.dumps({"metric": metric, "lookback_days": lookback_days})},
             )
@@ -63,7 +63,7 @@ class ParameterOptimizationService:
                     INSERT INTO research_optimization_runs
                         (id, run_id, param_grid, metric, lookback_days, combos_total, created_at)
                     VALUES
-                        (:id, :run_id, :grid::jsonb, :metric, :days, :total, NOW())
+                        (:id, :run_id, CAST(:grid AS jsonb), :metric, :days, :total, NOW())
                 """),
                 {
                     "id": opt_id, "run_id": run_id,
@@ -165,7 +165,7 @@ class ParameterOptimizationService:
                                  max_drawdown_pct, win_rate, profit_factor,
                                  trade_count, avg_trade_pnl, created_at)
                             VALUES
-                                (:rid, :params::jsonb, :sh, :so, :ca,
+                                (:rid, CAST(:params AS jsonb), :sh, :so, :ca,
                                  :mdd, :wr, :pf, :cnt, :avg, NOW())
                         """),
                         {
@@ -195,7 +195,7 @@ class ParameterOptimizationService:
                 await db.execute(
                     text("""
                         UPDATE research_optimization_runs
-                        SET best_params = :bp::jsonb, best_metric_value = :bv
+                        SET best_params = CAST(:bp AS jsonb), best_metric_value = :bv
                         WHERE run_id = :rid
                     """),
                     {"bp": json.dumps(best_params), "bv": best_value if best_params else None, "rid": run_id},
