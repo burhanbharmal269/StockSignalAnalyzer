@@ -73,7 +73,7 @@ class ExecutionEventHandler:
                 "regime": getattr(event, "regime", None),
             })
         except Exception as exc:
-            _log.debug("exec_intel.handle_signal_generated: %s", exc)
+            _log.warning("exec_intel.handle_signal_generated: %s", exc)
 
     async def handle_signal_risk_approved(self, event: Any) -> None:
         try:
@@ -86,7 +86,7 @@ class ExecutionEventHandler:
                 "position_size_lots": event.position_size_lots,
             })
         except Exception as exc:
-            _log.debug("exec_intel.handle_signal_risk_approved: %s", exc)
+            _log.warning("exec_intel.handle_signal_risk_approved: %s", exc)
 
     # ── Order events ──────────────────────────────────────────────────────────
 
@@ -104,7 +104,7 @@ class ExecutionEventHandler:
                 "order_type": event.order_type,
             })
         except Exception as exc:
-            _log.debug("exec_intel.handle_order_created: %s", exc)
+            _log.warning("exec_intel.handle_order_created: %s", exc)
 
     async def handle_order_filled(self, event: Any) -> None:
         try:
@@ -164,7 +164,7 @@ class ExecutionEventHandler:
             })
             await self._replay.flush_signal(signal_id)
         except Exception as exc:
-            _log.debug("exec_intel.handle_order_filled: %s", exc)
+            _log.warning("exec_intel.handle_order_filled: %s", exc)
 
     async def handle_order_rejected(self, event: Any) -> None:
         try:
@@ -180,7 +180,7 @@ class ExecutionEventHandler:
             self._replay.record_error(signal_id, "order_rejected", event.reason)
             await self._replay.flush_signal(signal_id)
         except Exception as exc:
-            _log.debug("exec_intel.handle_order_rejected: %s", exc)
+            _log.warning("exec_intel.handle_order_rejected: %s", exc)
 
     async def handle_order_cancelled(self, event: Any) -> None:
         try:
@@ -192,7 +192,7 @@ class ExecutionEventHandler:
             })
             await self._replay.flush_signal(signal_id)
         except Exception as exc:
-            _log.debug("exec_intel.handle_order_cancelled: %s", exc)
+            _log.warning("exec_intel.handle_order_cancelled: %s", exc)
 
     async def handle_order_partially_filled(self, event: Any) -> None:
         try:
@@ -210,7 +210,7 @@ class ExecutionEventHandler:
                 avg_fill_price=avg_price,
             )
         except Exception as exc:
-            _log.debug("exec_intel.handle_order_partially_filled: %s", exc)
+            _log.warning("exec_intel.handle_order_partially_filled: %s", exc)
 
     # ── Position events ───────────────────────────────────────────────────────
 
@@ -236,7 +236,7 @@ class ExecutionEventHandler:
                 "regime": getattr(event, "regime_at_open", None),
             })
         except Exception as exc:
-            _log.debug("exec_intel.handle_position_opened: %s", exc)
+            _log.warning("exec_intel.handle_position_opened: %s", exc)
 
     async def handle_position_closed(self, event: Any) -> None:
         try:
@@ -257,4 +257,4 @@ class ExecutionEventHandler:
                 "outcome": event.outcome,
             })
         except Exception as exc:
-            _log.debug("exec_intel.handle_position_closed: %s", exc)
+            _log.warning("exec_intel.handle_position_closed: %s", exc)

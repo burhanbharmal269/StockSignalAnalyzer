@@ -349,7 +349,7 @@ def _compute_features(candles) -> dict:
             "cumulative_delta": cumulative_delta,
         }
     except Exception as exc:
-        _log.debug("feature_compute error: %s", exc)
+        _log.warning("feature_compute error: %s", exc)
         return {}
 
 

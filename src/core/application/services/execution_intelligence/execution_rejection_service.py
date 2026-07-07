@@ -78,7 +78,7 @@ class ExecutionRejectionService:
                     "sid": signal_id, "oid": order_id, "sym": symbol, "broker": broker,
                     "rejected_by": rejected_by, "category": category,
                     "raw_reason": raw_reason, "regime": regime,
-                    "time_of_day": now.time().isoformat(),
+                    "time_of_day": now.time(),
                 })
                 await db.commit()
             _log.info(
@@ -86,7 +86,7 @@ class ExecutionRejectionService:
                 category, signal_id or "?", symbol or "?", raw_reason or "?",
             )
         except Exception as exc:
-            _log.debug("execution_rejection.record_failed: %s", exc)
+            _log.warning("execution_rejection.record_failed: %s", exc)
         return category
 
     async def get_stats(self, hours: int = 24) -> dict[str, Any]:

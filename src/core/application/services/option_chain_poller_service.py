@@ -108,7 +108,7 @@ class OptionChainPollerService:
                 )
                 return True
             except Exception as exc:
-                _log.debug(
+                _log.warning(
                     "option_chain_poller_service.fetch_failed symbol=%s err=%s",
                     ticker, exc,
                 )
