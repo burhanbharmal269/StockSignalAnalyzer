@@ -38,7 +38,11 @@ class StrategyVersionService:
             raw = _WEIGHTS_PATH.read_text(encoding="utf-8")
             cfg = yaml.safe_load(raw)
             sha = hashlib.sha256(raw.encode()).hexdigest()
-            weights = {k: v for k, v in cfg.get("components", {}).items()}
+            # Store flat {component: max_score} — the researchable weight value
+            weights = {
+                k: (v["max_score"] if isinstance(v, dict) and "max_score" in v else v)
+                for k, v in cfg.get("components", {}).items()
+            }
         except Exception as exc:
             _log.warning("strategy_version_service.seed_v1.read_failed: %s", exc)
             weights, sha, raw = {}, "", ""

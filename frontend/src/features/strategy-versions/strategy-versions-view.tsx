@@ -113,11 +113,16 @@ export function StrategyVersionsView() {
                       <span className="text-xs bg-blue-100 text-blue-800 rounded px-1.5 py-0.5">Research</span>
                     )}
                   </td>
-                  {["oi_buildup","trend","option_chain","volume","vwap","sentiment","iv_analysis"].map((k) => (
-                    <td key={k} className="px-4 py-2 text-right tabular-nums">
-                      {v.weights_snapshot?.[k] ?? "—"}
-                    </td>
-                  ))}
+                  {["oi_buildup","trend","option_chain","volume","vwap","sentiment","iv_analysis"].map((k) => {
+                    const w = v.weights_snapshot?.[k];
+                    const raw = typeof w === "object" && w !== null ? (w as Record<string,unknown>).max_score : w;
+                    const display = raw != null ? String(raw) : "—";
+                    return (
+                      <td key={k} className="px-4 py-2 text-right tabular-nums">
+                        {display}
+                      </td>
+                    );
+                  })}
                   <td className="px-4 py-2 text-muted-foreground">
                     {v.created_at ? new Date(v.created_at).toLocaleDateString() : "—"}
                   </td>
