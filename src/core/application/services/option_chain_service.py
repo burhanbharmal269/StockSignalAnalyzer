@@ -381,28 +381,32 @@ class OptionChainService:
     # ------------------------------------------------------------------
 
     async def _iv_percentile(self, underlying: str, db) -> float | None:
-        """Rolling IV percentile: rank of current ATM IV vs last 252 trading days."""
+        """Rolling IV percentile: rank current ATM IV against last 252 trading days.
+
+        Selects the nearest-to-ATM CE IV per calendar day (using max_pain as the
+        underlying price proxy), ordered oldest-first so rows[-1] is today's value.
+        """
         result = await db.execute(text("""
             SELECT DISTINCT ON (DATE(captured_at)) iv
             FROM option_chain_snapshots
             WHERE underlying = :und
               AND option_type = 'CE'
               AND iv IS NOT NULL AND iv > 0
-            ORDER BY DATE(captured_at), ABS(strike - (
-                SELECT ltp FROM option_chain_snapshots
-                WHERE underlying = :und AND option_type = 'CE'
-                  AND captured_at = (SELECT MAX(captured_at) FROM option_chain_snapshots WHERE underlying = :und)
-                ORDER BY captured_at DESC LIMIT 1
-            ))
+            ORDER BY DATE(captured_at) ASC, ABS(strike - max_pain) ASC
             LIMIT :lookback
         """), {"und": underlying, "lookback": _IV_PERCENTILE_LOOKBACK + 1})
         rows = result.fetchall()
         if len(rows) < 5:
             return None
-        iv_values = sorted(float(r[0]) for r in rows)
-        current_iv = iv_values[-1]
-        rank = sum(1 for v in iv_values[:-1] if v <= current_iv)
-        return round(rank / len(iv_values[:-1]) * 100, 1)
+        # rows are date-ascending; last row is the most recent (current) day's ATM IV
+        current_iv = float(rows[-1][0])
+        if current_iv <= 0:
+            return None
+        historical_ivs = [float(r[0]) for r in rows[:-1] if r[0] and float(r[0]) > 0]
+        if not historical_ivs:
+            return None
+        rank = sum(1 for v in historical_ivs if v <= current_iv)
+        return round(rank / len(historical_ivs) * 100, 1)
 
     async def _latest_atm_iv(self, underlying: str, db) -> float | None:
         result = await db.execute(text("""

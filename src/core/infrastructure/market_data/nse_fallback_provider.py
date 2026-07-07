@@ -101,6 +101,7 @@ class NSEFallbackProvider(IMarketDataProvider):
         self,
         underlying: str,
         expiry: date | None = None,
+        include_futures: bool = False,
     ) -> list[OptionChainEntry]:
         data = await self._get(
             f"{_NSE_BASE}/api/option-chain-indices?symbol={underlying}"
