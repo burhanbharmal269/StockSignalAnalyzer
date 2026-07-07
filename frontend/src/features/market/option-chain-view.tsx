@@ -5,6 +5,7 @@ import { optionService } from "@/services/market.service";
 import { MetricTile } from "@/components/shared/metric-tile";
 import { RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMarketOpen } from "@/hooks/use-market-open";
 
 interface OCSummary {
   underlying?: string;
@@ -22,6 +23,7 @@ export function OptionChainView() {
   const [input, setInput] = useState("NIFTY");
   const [data, setData] = useState<OCSummary | null>(null);
   const [loading, setLoading] = useState(false);
+  const { marketOpen, session } = useMarketOpen();
 
   const load = (sym: string) => {
     setLoading(true);
@@ -56,6 +58,18 @@ export function OptionChainView() {
     <div className="p-6 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <h1 className="text-2xl font-bold">Option Chain</h1>
+        <span
+          className={cn(
+            "text-xs font-semibold px-2 py-0.5 rounded-full",
+            session === "open"
+              ? "bg-green-100 text-green-800"
+              : session === "pre-open"
+              ? "bg-yellow-100 text-yellow-800"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {session === "open" ? "Market Open" : session === "pre-open" ? "Pre-Open" : "Market Closed"}
+        </span>
         <input
           className="w-28 rounded-md border bg-background px-3 py-1.5 text-sm"
           value={input}
@@ -71,7 +85,8 @@ export function OptionChainView() {
         </button>
         <button
           onClick={refresh}
-          disabled={loading}
+          disabled={loading || !marketOpen}
+          title={!marketOpen ? "Live refresh only available during market hours (9:15–15:30 IST)" : "Fetch latest option chain"}
           className="flex items-center gap-2 px-3 py-1.5 rounded-md border bg-card text-sm font-medium hover:bg-accent disabled:opacity-50"
         >
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />

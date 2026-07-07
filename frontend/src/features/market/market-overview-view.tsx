@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { marketService, newsService } from "@/services/market.service";
 import { MetricTile } from "@/components/shared/metric-tile";
 import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMarketOpen } from "@/hooks/use-market-open";
 
 interface Breadth {
   advances: number;
@@ -30,8 +31,10 @@ export function MarketOverviewView() {
   const [breadth, setBreadth] = useState<Breadth | null>(null);
   const [sentiment, setSentiment] = useState<Sentiment | null>(null);
   const [loading, setLoading] = useState(true);
+  const { marketOpen, session } = useMarketOpen();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const fetchData = () => {
     Promise.all([marketService.getBreadth(), newsService.getMarketSentiment()])
       .then(([b, s]) => {
         setBreadth(b?.advances != null ? b : null);
@@ -39,7 +42,19 @@ export function MarketOverviewView() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => {
+    fetchData();
+    // Auto-refresh every 5 minutes only during market hours
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (marketOpen) {
+      intervalRef.current = setInterval(fetchData, 5 * 60_000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [marketOpen]);
 
   if (loading) return <div className="p-6 text-muted-foreground">Loading market overview...</div>;
 
@@ -54,7 +69,21 @@ export function MarketOverviewView() {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Market Overview</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-bold">Market Overview</h1>
+        <span
+          className={cn(
+            "text-xs font-semibold px-2 py-0.5 rounded-full",
+            session === "open"
+              ? "bg-green-100 text-green-800"
+              : session === "pre-open"
+              ? "bg-yellow-100 text-yellow-800"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          {session === "open" ? "Market Open" : session === "pre-open" ? "Pre-Open" : "Market Closed"}
+        </span>
+      </div>
 
       {breadth ? (
         <>

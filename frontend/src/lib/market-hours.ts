@@ -12,9 +12,13 @@
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // UTC+5:30
 
-/** Return current time as a Date adjusted to IST. */
+/**
+ * Return a Date whose UTC getters (getUTCHours, getUTCMinutes, getUTCDay)
+ * read as if the clock were in IST. Date.now() is always UTC so we simply
+ * add the fixed IST offset — no local-timezone math needed.
+ */
 function nowIST(): Date {
-  return new Date(Date.now() + IST_OFFSET_MS - new Date().getTimezoneOffset() * 60_000);
+  return new Date(Date.now() + IST_OFFSET_MS);
 }
 
 /**
