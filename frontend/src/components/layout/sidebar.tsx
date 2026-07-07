@@ -9,6 +9,7 @@ import {
   CandlestickChart, Sparkles, Bot, Newspaper, FlaskConical, Filter, Brain,
   PieChart, BookOpen, Microscope, MonitorDot, CalendarDays, ShieldCheck,
   ClipboardList, TestTube2, TrendingDown,
+  GitBranch, Sliders, Shuffle, Map, Trophy, AlertTriangle, Rocket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
@@ -20,6 +21,7 @@ const ICON_MAP = {
   CandlestickChart, Sparkles, Bot, Newspaper, FlaskConical, Filter, Brain,
   PieChart, BookOpen, Microscope, MonitorDot, CalendarDays, ShieldCheck,
   ClipboardList, TestTube2, TrendingDown,
+  GitBranch, Sliders, Shuffle, Map, Trophy, AlertTriangle, Rocket,
 } as const;
 
 const NAV_ITEMS = [
@@ -55,6 +57,15 @@ const NAV_ITEMS = [
   { label: "Operations", href: "/operations", icon: "ClipboardList" },
   { label: "Experiments", href: "/experiments", icon: "TestTube2" },
   { label: "Trade Mgmt", href: "/trade-management", icon: "TrendingDown" },
+  { label: "Research Hub", href: "/research-hub", icon: "FlaskConical" },
+  { label: "Strategy Versions", href: "/strategy-versions", icon: "GitBranch" },
+  { label: "Param Optimization", href: "/parameter-optimization", icon: "Sliders" },
+  { label: "Walk-Forward", href: "/walk-forward", icon: "LineChart" },
+  { label: "Monte Carlo", href: "/monte-carlo", icon: "Shuffle" },
+  { label: "Regime Performance", href: "/regime-performance", icon: "Map" },
+  { label: "Symbol Rankings", href: "/symbol-rankings", icon: "Trophy" },
+  { label: "False Positive", href: "/false-positive", icon: "AlertTriangle" },
+  { label: "Promotion Queue", href: "/strategy-promotion", icon: "Rocket" },
 ] as const;
 
 export function Sidebar() {
