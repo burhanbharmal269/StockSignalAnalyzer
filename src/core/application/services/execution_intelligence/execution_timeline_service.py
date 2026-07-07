@@ -69,7 +69,7 @@ class ExecutionTimelineService:
         ts: datetime | None = None,
     ) -> None:
         await self._upsert(str(signal_id), {
-            "signal_generated_at": (ts or datetime.now(UTC)).isoformat(),
+            "signal_generated_at": ts or datetime.now(UTC),
             "symbol": symbol,
             "direction": direction,
             "regime": regime,
@@ -80,7 +80,7 @@ class ExecutionTimelineService:
         self, signal_id: str | UUID, ts: datetime | None = None
     ) -> None:
         await self._upsert(str(signal_id), {
-            "risk_approved_at": (ts or datetime.now(UTC)).isoformat(),
+            "risk_approved_at": ts or datetime.now(UTC),
         })
 
     async def record_order_created(
@@ -92,7 +92,7 @@ class ExecutionTimelineService:
     ) -> None:
         await self._upsert(str(signal_id), {
             "order_id": str(order_id),
-            "order_submitted_at": (ts or datetime.now(UTC)).isoformat(),
+            "order_submitted_at": ts or datetime.now(UTC),
         })
 
     async def record_order_filled(
@@ -102,7 +102,7 @@ class ExecutionTimelineService:
         *,
         ts: datetime | None = None,
     ) -> None:
-        now = (ts or datetime.now(UTC)).isoformat()
+        now = ts or datetime.now(UTC)
         await self._upsert(str(signal_id), {
             "order_id": str(order_id),
             "broker_received_at": now,
@@ -120,14 +120,14 @@ class ExecutionTimelineService:
     ) -> None:
         await self._upsert(str(signal_id), {
             "position_id": str(position_id),
-            "position_opened_at": (ts or datetime.now(UTC)).isoformat(),
+            "position_opened_at": ts or datetime.now(UTC),
         })
 
     async def record_position_closed(
         self, signal_id: str | UUID, *, ts: datetime | None = None
     ) -> None:
         await self._upsert(str(signal_id), {
-            "position_closed_at": (ts or datetime.now(UTC)).isoformat(),
+            "position_closed_at": ts or datetime.now(UTC),
         })
 
     # ── Read API ──────────────────────────────────────────────────────────────

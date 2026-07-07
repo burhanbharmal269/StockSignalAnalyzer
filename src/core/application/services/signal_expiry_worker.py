@@ -33,6 +33,7 @@ _EXPIRABLE_STATES = {
     SignalState.SCORING.value,
     SignalState.SCORED.value,
     SignalState.RISK_PENDING.value,
+    SignalState.RISK_APPROVED.value,
 }
 
 

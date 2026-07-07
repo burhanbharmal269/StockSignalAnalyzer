@@ -591,7 +591,10 @@ def _build_signal_request(symbol: str, token: int, lot_size: int, f: dict, regim
         entry_price=entry,
         stop_loss_price=stop,
         target_price=tgt,
-        option_premium=None,
+        # ATR is a reasonable ATM-option-premium proxy at scan time — the actual
+        # contract LTP isn't known until the strike selector runs after risk approval.
+        # The risk engine uses this only for lot_risk = premium × lot_size capital check.
+        option_premium=atr_d,
         lot_size=lot_size,
         dte=dte,
         atr_14=atr,

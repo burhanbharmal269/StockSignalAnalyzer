@@ -53,7 +53,7 @@ const GRADE_STYLES: Record<string, string> = {
 export function SignalsView() {
   useSignalLiveUpdates();
   const [stateFilter, setStateFilter] = useState<string>("");
-  const [foOnly, setFoOnly] = useState(true);
+  const [foOnly, setFoOnly] = useState(false);
   const [dedupByTicker, setDedupByTicker] = useState(true);
   const [traceSignalId, setTraceSignalId] = useState<string | null>(null);
   const { data, isLoading, isError } = useSignals(stateFilter ? { state: stateFilter } : {});

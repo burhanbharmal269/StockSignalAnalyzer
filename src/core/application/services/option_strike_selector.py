@@ -381,13 +381,12 @@ class OptionStrikeSelector:
 
     @staticmethod
     def _contract_suffix(expiry_str: str, strike: float, opt_type: str) -> str:
-        """Build Kite-style suffix: 26JUN26 + strike + CE/PE."""
+        """Build Kite-style suffix: YYMONSTRIKE + CE/PE (e.g. 26JUL1750CE)."""
         try:
             d = date.fromisoformat(expiry_str)
             month = d.strftime("%b").upper()
-            day   = f"{d.day:02d}"
             year  = str(d.year)[2:]
             strike_str = int(strike) if strike == int(strike) else strike
-            return f"{day}{month}{year}{strike_str}{opt_type}"
+            return f"{year}{month}{strike_str}{opt_type}"
         except Exception:
             return f"{strike}{opt_type}"
