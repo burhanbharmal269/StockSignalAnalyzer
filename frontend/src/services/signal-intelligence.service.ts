@@ -1,4 +1,4 @@
-import apiClient from "@/lib/api-client";
+﻿import apiClient from "@/lib/api-client";
 
 export interface SignalSummary {
   total: number;
@@ -143,54 +143,54 @@ export interface OptimizationReport {
 
 export const signalIntelligenceService = {
   getSignalSummary: () =>
-    apiClient.get<SignalSummary>("/intelligence/signals/summary").then((r) => r.data),
+    apiClient.get<SignalSummary>("intelligence/signals/summary").then((r) => r.data),
 
   getTopSymbols: (limit = 10) =>
     apiClient
-      .get<{ top_symbols: TopSymbol[]; limit: number }>("/intelligence/signals/top-symbols", {
+      .get<{ top_symbols: TopSymbol[]; limit: number }>("intelligence/signals/top-symbols", {
         params: { limit },
       })
       .then((r) => r.data),
 
   getSectorBreakdown: () =>
     apiClient
-      .get<{ sectors: SectorBreakdown[] }>("/intelligence/signals/sectors")
+      .get<{ sectors: SectorBreakdown[] }>("intelligence/signals/sectors")
       .then((r) => r.data),
 
   getStrategyLeaderboard: (lookbackDays = 30) =>
     apiClient
-      .get<StrategyLeaderboard>("/intelligence/strategies/leaderboard", {
+      .get<StrategyLeaderboard>("intelligence/strategies/leaderboard", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getFilterAnalytics: (lookbackDays = 30) =>
     apiClient
-      .get<FilterAnalyticsReport>("/intelligence/filters", {
+      .get<FilterAnalyticsReport>("intelligence/filters", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   triggerOutcomeCheck: () =>
-    apiClient.post("/intelligence/outcomes/check").then((r) => r.data),
+    apiClient.post("intelligence/outcomes/check").then((r) => r.data),
 
   getRegimePerformance: (lookbackDays = 30) =>
     apiClient
-      .get<RegimePerformanceReport>("/intelligence/regime-performance", {
+      .get<RegimePerformanceReport>("intelligence/regime-performance", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getLeaderboard: (lookbackDays = 30) =>
     apiClient
-      .get<SignalLeaderboard>("/intelligence/leaderboard", {
+      .get<SignalLeaderboard>("intelligence/leaderboard", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getInsights: (lookbackDays = 30) =>
     apiClient
-      .get<OptimizationReport>("/intelligence/insights", {
+      .get<OptimizationReport>("intelligence/insights", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),

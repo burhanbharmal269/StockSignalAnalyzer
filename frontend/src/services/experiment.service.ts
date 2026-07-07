@@ -1,4 +1,4 @@
-import apiClient from "@/lib/api-client";
+﻿import apiClient from "@/lib/api-client";
 
 export interface Experiment {
   id: number;
@@ -82,36 +82,36 @@ export interface PlatformStatus {
 export const experimentService = {
   listExperiments: (status?: string) =>
     apiClient
-      .get<{ count: number; experiments: Experiment[] }>("/experiments", { params: status ? { status } : {} })
+      .get<{ count: number; experiments: Experiment[] }>("experiments", { params: status ? { status } : {} })
       .then((r) => r.data),
 
   getExperiment: (id: string) =>
-    apiClient.get<Experiment>(`/experiments/${id}`).then((r) => r.data),
+    apiClient.get<Experiment>(`experiments/${id}`).then((r) => r.data),
 
   createExperiment: (payload: Partial<Experiment> & { experiment_id: string; title: string; hypothesis: string; author: string }) =>
-    apiClient.post<Experiment>("/experiments", payload).then((r) => r.data),
+    apiClient.post<Experiment>("experiments", payload).then((r) => r.data),
 
   updateStatus: (id: string, status: string, notes?: string) =>
-    apiClient.patch<Experiment>(`/experiments/${id}/status`, { status, notes }).then((r) => r.data),
+    apiClient.patch<Experiment>(`experiments/${id}/status`, { status, notes }).then((r) => r.data),
 
   approveExperiment: (id: string) =>
-    apiClient.post<Experiment>(`/experiments/${id}/approve`).then((r) => r.data),
+    apiClient.post<Experiment>(`experiments/${id}/approve`).then((r) => r.data),
 
   setConclusion: (id: string, conclusion: string) =>
-    apiClient.put(`/experiments/${id}/conclusion`, { conclusion }).then((r) => r.data),
+    apiClient.put(`experiments/${id}/conclusion`, { conclusion }).then((r) => r.data),
 
   getValidation: (id: string) =>
-    apiClient.get<ExperimentValidation>(`/experiments/${id}/validation`).then((r) => r.data),
+    apiClient.get<ExperimentValidation>(`experiments/${id}/validation`).then((r) => r.data),
 
   getGovernance: (id: string) =>
-    apiClient.get<GovernanceReport>(`/experiments/${id}/governance`).then((r) => r.data),
+    apiClient.get<GovernanceReport>(`experiments/${id}/governance`).then((r) => r.data),
 
   getPlatformStatus: () =>
-    apiClient.get<PlatformStatus>("/platform/status").then((r) => r.data),
+    apiClient.get<PlatformStatus>("platform/status").then((r) => r.data),
 
   getWeeklyReview: (days = 7) =>
-    apiClient.get<Record<string, unknown>>("/platform/weekly-review", { params: { days } }).then((r) => r.data),
+    apiClient.get<Record<string, unknown>>("platform/weekly-review", { params: { days } }).then((r) => r.data),
 
   getPlatformEvents: (limit = 50) =>
-    apiClient.get<{ count: number; events: unknown[] }>("/platform/events", { params: { limit } }).then((r) => r.data),
+    apiClient.get<{ count: number; events: unknown[] }>("platform/events", { params: { limit } }).then((r) => r.data),
 };

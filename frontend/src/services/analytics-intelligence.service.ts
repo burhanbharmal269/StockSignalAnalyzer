@@ -1,4 +1,4 @@
-import apiClient from "@/lib/api-client";
+﻿import apiClient from "@/lib/api-client";
 
 // ─── Portfolio Intelligence ────────────────────────────────────────────────────
 
@@ -428,21 +428,21 @@ export interface ResearchDashboard {
 export const analyticsIntelligenceService = {
   // Portfolio Intelligence
   getPortfolioDashboard: () =>
-    apiClient.get<PortfolioDashboard>("/analytics/portfolio/dashboard").then((r) => r.data),
+    apiClient.get<PortfolioDashboard>("analytics/portfolio/dashboard").then((r) => r.data),
 
   getPortfolioHeat: () =>
-    apiClient.get<PortfolioHeat>("/analytics/portfolio/heat").then((r) => r.data),
+    apiClient.get<PortfolioHeat>("analytics/portfolio/heat").then((r) => r.data),
 
   getRiskOfRuin: (lookbackDays = 90) =>
     apiClient
-      .get<PortfolioRiskOfRuin>("/analytics/portfolio/risk-of-ruin", {
+      .get<PortfolioRiskOfRuin>("analytics/portfolio/risk-of-ruin", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getSuccessCriteria: (lookbackDays = 30) =>
     apiClient
-      .get<SuccessCriteria>("/analytics/portfolio/success-criteria", {
+      .get<SuccessCriteria>("analytics/portfolio/success-criteria", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
@@ -450,7 +450,7 @@ export const analyticsIntelligenceService = {
   // Post-Trade Intelligence
   getAttributionSummary: (lookbackDays = 30) =>
     apiClient
-      .get<AttributionSummary>("/analytics/post-trade/summary", {
+      .get<AttributionSummary>("analytics/post-trade/summary", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
@@ -458,7 +458,7 @@ export const analyticsIntelligenceService = {
   triggerAttributionEnrich: (limit = 200) =>
     apiClient
       .post<{ processed: number; skipped: number; errors: number }>(
-        "/analytics/post-trade/enrich",
+        "analytics/post-trade/enrich",
         null,
         { params: { limit } }
       )
@@ -466,42 +466,42 @@ export const analyticsIntelligenceService = {
 
   getEntryExitSummary: (lookbackDays = 30) =>
     apiClient
-      .get<EntryExitSummary>("/analytics/journey", {
+      .get<EntryExitSummary>("analytics/journey", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getStopDistribution: (lookbackDays = 30) =>
     apiClient
-      .get<StopDistribution>("/analytics/stops", {
+      .get<StopDistribution>("analytics/stops", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getRecoveryAnalysis: (lookbackDays = 30) =>
     apiClient
-      .get<RecoveryAnalysis>("/analytics/recovery", {
+      .get<RecoveryAnalysis>("analytics/recovery", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getComponentPerformance: (lookbackDays = 30) =>
     apiClient
-      .get<ComponentAttributionResult>("/analytics/components", {
+      .get<ComponentAttributionResult>("analytics/components", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getGateEffectiveness: (lookbackDays = 30) =>
     apiClient
-      .get<GateEffectivenessResult>("/analytics/gates", {
+      .get<GateEffectivenessResult>("analytics/gates", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
 
   getRecommendations: (lookbackDays = 30) =>
     apiClient
-      .get<RecommendationsResult>("/analytics/recommendations", {
+      .get<RecommendationsResult>("analytics/recommendations", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
@@ -509,7 +509,7 @@ export const analyticsIntelligenceService = {
   // Research Intelligence — Cohorts
   getCohorts: (lookbackDays = 90) =>
     apiClient
-      .get<CohortResult>("/analytics/cohorts", {
+      .get<CohortResult>("analytics/cohorts", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
@@ -517,7 +517,7 @@ export const analyticsIntelligenceService = {
   // Research Intelligence — Edge Discovery
   getEdges: (lookbackDays = 90, minTrades = 10) =>
     apiClient
-      .get<EdgeDiscoveryResult>("/analytics/edges", {
+      .get<EdgeDiscoveryResult>("analytics/edges", {
         params: { lookback_days: lookbackDays, min_trades: minTrades },
       })
       .then((r) => r.data),
@@ -525,42 +525,42 @@ export const analyticsIntelligenceService = {
   // Research Intelligence — Clusters
   getLossClusters: (lookbackDays = 90, topN = 15) =>
     apiClient
-      .get<ClusterResult>("/analytics/clusters/loss", {
+      .get<ClusterResult>("analytics/clusters/loss", {
         params: { lookback_days: lookbackDays, top_n: topN },
       })
       .then((r) => r.data),
 
   getWinnerClusters: (lookbackDays = 90, topN = 15) =>
     apiClient
-      .get<ClusterResult>("/analytics/clusters/winners", {
+      .get<ClusterResult>("analytics/clusters/winners", {
         params: { lookback_days: lookbackDays, top_n: topN },
       })
       .then((r) => r.data),
 
   // Trade Replay
   getReplayTimeline: (signalId: string) =>
-    apiClient.get<ReplayTimeline>(`/analytics/replay/${signalId}`).then((r) => r.data),
+    apiClient.get<ReplayTimeline>(`analytics/replay/${signalId}`).then((r) => r.data),
 
   triggerReplayBackfill: (limit = 300) =>
     apiClient
       .post<{ signals_processed: number; events_created: number; skipped: number; errors: number }>(
-        "/analytics/replay/backfill",
+        "analytics/replay/backfill",
         null,
         { params: { limit } }
       )
       .then((r) => r.data),
 
   getReplayCoverage: () =>
-    apiClient.get<ReplayCoverage>("/analytics/replay/coverage").then((r) => r.data),
+    apiClient.get<ReplayCoverage>("analytics/replay/coverage").then((r) => r.data),
 
   // Operator
   getOperatorStatus: () =>
-    apiClient.get<OperatorStatusPanel>("/analytics/operator/status").then((r) => r.data),
+    apiClient.get<OperatorStatusPanel>("analytics/operator/status").then((r) => r.data),
 
   // Research Dashboard
   getResearchDashboard: (lookbackDays = 30) =>
     apiClient
-      .get<ResearchDashboard>("/analytics/research/dashboard", {
+      .get<ResearchDashboard>("analytics/research/dashboard", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),
@@ -568,7 +568,7 @@ export const analyticsIntelligenceService = {
   // Weekly Intelligence
   getWeeklyReport: (lookbackDays = 7) =>
     apiClient
-      .get<WeeklyReport>("/analytics/intelligence/weekly", {
+      .get<WeeklyReport>("analytics/intelligence/weekly", {
         params: { lookback_days: lookbackDays },
       })
       .then((r) => r.data),

@@ -77,7 +77,7 @@ export interface WeeklyReport extends TmiSummary {
   interpretation: string[];
 }
 
-const BASE = "/trade-management";
+const BASE = "trade-management";
 
 export const tradeManagementService = {
   getSummary: (days = 30): Promise<TmiSummary> =>

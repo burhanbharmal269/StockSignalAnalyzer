@@ -1,4 +1,4 @@
-import apiClient from "@/lib/api-client";
+﻿import apiClient from "@/lib/api-client";
 import type { SignalOverlay } from "@/types";
 
 export interface ExecutionSummary {
@@ -46,21 +46,21 @@ export interface PaperTradingReportsResponse {
 export const analyticsService = {
   getExecutionSummary: (params: Record<string, unknown> = {}) =>
     apiClient
-      .get<ExecutionSummary>("/analytics/execution/summary", { params })
+      .get<ExecutionSummary>("analytics/execution/summary", { params })
       .then((r) => r.data),
 
   listExecutionRecords: (params: Record<string, unknown> = {}) =>
     apiClient
-      .get<ExecutionRecordsResponse>("/analytics/execution/records", { params })
+      .get<ExecutionRecordsResponse>("analytics/execution/records", { params })
       .then((r) => r.data),
 
   getPaperTradingReports: (periodType: "DAILY" | "WEEKLY" | "MONTHLY" = "DAILY") =>
     apiClient
-      .get<PaperTradingReportsResponse>(`/paper-trading/reports/${periodType}`)
+      .get<PaperTradingReportsResponse>(`paper-trading/reports/${periodType}`)
       .then((r) => r.data),
 
   getSignalOverlay: (signalId: string) =>
     apiClient
-      .get<SignalOverlay>(`/signals/${signalId}/overlay`)
+      .get<SignalOverlay>(`signals/${signalId}/overlay`)
       .then((r) => r.data),
 };

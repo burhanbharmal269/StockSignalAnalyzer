@@ -7,7 +7,7 @@ import type {
   ValidationSummaryReport,
 } from "@/types";
 
-const BASE = "/validation";
+const BASE = "validation";
 
 export const validationService = {
   getReadiness: () =>

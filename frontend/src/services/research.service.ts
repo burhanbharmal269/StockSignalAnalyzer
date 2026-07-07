@@ -9,7 +9,7 @@ import type {
   WeeklyReportSummary,
 } from "@/types";
 
-const BASE = "/research";
+const BASE = "research";
 
 export const researchService = {
   getHealth: (): Promise<StrategyHealth> =>
@@ -65,7 +65,7 @@ export const researchService = {
 
 // ── Phase 24: Strategy Research & Versioning ──────────────────────────────────
 
-const R24 = "/research";
+const R24 = "research";
 
 export const strategyVersioningService = {
   list: () => apiClient.get(`${R24}/versions`).then((r) => r.data),

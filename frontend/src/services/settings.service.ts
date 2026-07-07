@@ -15,11 +15,11 @@ export interface RiskCapitalSettings {
 export const settingsService = {
   getRiskCapital: () =>
     apiClient
-      .get<RiskCapitalSettings>("/settings/risk-capital")
+      .get<RiskCapitalSettings>("settings/risk-capital")
       .then((r) => r.data),
 
   updateRiskCapital: (data: RiskCapitalSettings) =>
     apiClient
-      .patch<RiskCapitalSettings>("/settings/risk-capital", data)
+      .patch<RiskCapitalSettings>("settings/risk-capital", data)
       .then((r) => r.data),
 };
