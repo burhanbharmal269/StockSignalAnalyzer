@@ -46,4 +46,13 @@ export const NAV_ITEMS = [
   { label: "System Health", href: "/system-health", icon: "Activity" },
   { label: "Paper Trading", href: "/paper-trading", icon: "FileText" },
   { label: "Settings", href: "/settings", icon: "Settings" },
+  { label: "Research Hub", href: "/research-hub", icon: "FlaskConical" },
+  { label: "Strategy Versions", href: "/strategy-versions", icon: "GitBranch" },
+  { label: "Param Optimization", href: "/parameter-optimization", icon: "Sliders" },
+  { label: "Walk-Forward", href: "/walk-forward", icon: "LineChart" },
+  { label: "Monte Carlo", href: "/monte-carlo", icon: "Shuffle" },
+  { label: "Regime Performance", href: "/regime-performance", icon: "Map" },
+  { label: "Symbol Rankings", href: "/symbol-rankings", icon: "Trophy" },
+  { label: "False Positive", href: "/false-positive", icon: "AlertTriangle" },
+  { label: "Promotion Queue", href: "/strategy-promotion", icon: "Rocket" },
 ] as const;

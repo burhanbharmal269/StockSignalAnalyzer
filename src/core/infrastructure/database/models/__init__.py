@@ -26,6 +26,23 @@ from core.infrastructure.database.models.capital_framework_models import (  # no
     RiskProfileOrm,
 )
 from core.infrastructure.database.models.user_models import AuditLogOrm, UserOrm
+from core.infrastructure.database.models.research_models import (  # noqa: F401
+    ResearchStrategyVersionOrm,
+    ResearchRunOrm,
+    ResearchOptimizationRunOrm,
+    ResearchOptimizationResultOrm,
+    ResearchWalkForwardWindowOrm,
+    ResearchMonteCarloRunOrm,
+    ResearchMonteCarloResultOrm,
+    ResearchPerformanceSnapshotOrm,
+    ResearchComponentCorrelationOrm,
+    ResearchFeatureImportanceOrm,
+    ResearchRegimePerformanceOrm,
+    ResearchSymbolRankingOrm,
+    ResearchFalsePositiveAnalysisOrm,
+    ResearchPromotionRequestOrm,
+    ResearchThresholdAnalysisOrm,
+)
 
 __all__ = [
     "AllocationHistoryOrm",

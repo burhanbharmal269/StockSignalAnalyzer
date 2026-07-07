@@ -1951,3 +1951,94 @@ class ApplicationContainer(containers.DeclarativeContainer):
         broker_health_svc=broker_health_monitor_service,
     )
 
+    # ── Phase 24: Research Framework ──────────────────────────────────────────
+
+    research_strategy_version_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.strategy_version_service",
+            fromlist=["StrategyVersionService"],
+        ).StrategyVersionService,
+        session_factory=db_session_factory,
+    )
+
+    research_performance_metrics_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.performance_metrics_service",
+            fromlist=["PerformanceMetricsService"],
+        ).PerformanceMetricsService,
+        session_factory=db_session_factory,
+    )
+
+    research_parameter_optimization_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.parameter_optimization_service",
+            fromlist=["ParameterOptimizationService"],
+        ).ParameterOptimizationService,
+        session_factory=db_session_factory,
+    )
+
+    research_walk_forward_analyzer_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.walk_forward_analyzer_service",
+            fromlist=["WalkForwardAnalyzerService"],
+        ).WalkForwardAnalyzerService,
+        session_factory=db_session_factory,
+    )
+
+    research_monte_carlo_simulation_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.monte_carlo_simulation_service",
+            fromlist=["MonteCarloSimulationService"],
+        ).MonteCarloSimulationService,
+        session_factory=db_session_factory,
+    )
+
+    research_component_correlation_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.component_correlation_service",
+            fromlist=["ComponentCorrelationService"],
+        ).ComponentCorrelationService,
+        session_factory=db_session_factory,
+    )
+
+    research_feature_importance_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.feature_importance_service",
+            fromlist=["FeatureImportanceService"],
+        ).FeatureImportanceService,
+        session_factory=db_session_factory,
+        feature_registry=feature_registry,
+    )
+
+    research_regime_performance_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.regime_performance_service",
+            fromlist=["ResearchRegimePerformanceService"],
+        ).ResearchRegimePerformanceService,
+        session_factory=db_session_factory,
+    )
+
+    research_symbol_ranking_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.symbol_ranking_service",
+            fromlist=["SymbolRankingService"],
+        ).SymbolRankingService,
+        session_factory=db_session_factory,
+    )
+
+    research_false_positive_analyzer_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.false_positive_analyzer_service",
+            fromlist=["FalsePositiveAnalyzerService"],
+        ).FalsePositiveAnalyzerService,
+        session_factory=db_session_factory,
+    )
+
+    research_strategy_promotion_service = providers.Singleton(
+        __import__(
+            "core.application.services.research.strategy_promotion_service",
+            fromlist=["StrategyPromotionService"],
+        ).StrategyPromotionService,
+        session_factory=db_session_factory,
+    )
+

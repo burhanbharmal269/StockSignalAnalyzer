@@ -81,6 +81,17 @@ from core.presentation.api.v1.routers.trade_management_router import router as t
 from core.presentation.api.v1.routers.oi_analytics_router import router as oi_analytics_router
 from core.presentation.api.v1.routers.scanner_intelligence_router import router as scanner_intelligence_router
 from core.presentation.api.v1.routers.execution_intelligence_router import router as execution_intelligence_router
+from core.presentation.api.v1.routers.research_strategy_version_router import router as research_strategy_version_router
+from core.presentation.api.v1.routers.research_optimization_router import router as research_optimization_router
+from core.presentation.api.v1.routers.research_walk_forward_router import router as research_walk_forward_router
+from core.presentation.api.v1.routers.research_monte_carlo_router import router as research_monte_carlo_router
+from core.presentation.api.v1.routers.research_performance_router import router as research_performance_router
+from core.presentation.api.v1.routers.research_correlation_router import router as research_correlation_router
+from core.presentation.api.v1.routers.research_feature_importance_router import router as research_feature_importance_router
+from core.presentation.api.v1.routers.research_regime_router import router as research_regime_router
+from core.presentation.api.v1.routers.research_symbol_ranking_router import router as research_symbol_ranking_router
+from core.presentation.api.v1.routers.research_false_positive_router import router as research_false_positive_router
+from core.presentation.api.v1.routers.research_promotion_router import router as research_promotion_router
 
 logger = get_logger(__name__)
 
@@ -180,6 +191,13 @@ def create_app() -> FastAPI:
             password_service=container.password_service(),
         )
         await initializer.run()
+
+        # Phase 24: Seed V1 strategy version (idempotent — no-op if already exists)
+        try:
+            await container.research_strategy_version_service().seed_v1()
+            logger.info("research.strategy_v1_seeded")
+        except Exception:
+            logger.warning("research.strategy_v1_seed_failed — research versioning may lack V1 baseline")
 
         # Kill switch — startup health check (FAIL_CLOSED if Redis unreachable)
         kill_switch_service = container.kill_switch_service()
@@ -485,6 +503,17 @@ def create_app() -> FastAPI:
             "core.presentation.api.v1.routers.oi_analytics_router",
             "core.presentation.api.v1.routers.scanner_intelligence_router",
             "core.presentation.api.v1.routers.execution_intelligence_router",
+            "core.presentation.api.v1.routers.research_strategy_version_router",
+            "core.presentation.api.v1.routers.research_optimization_router",
+            "core.presentation.api.v1.routers.research_walk_forward_router",
+            "core.presentation.api.v1.routers.research_monte_carlo_router",
+            "core.presentation.api.v1.routers.research_performance_router",
+            "core.presentation.api.v1.routers.research_correlation_router",
+            "core.presentation.api.v1.routers.research_feature_importance_router",
+            "core.presentation.api.v1.routers.research_regime_router",
+            "core.presentation.api.v1.routers.research_symbol_ranking_router",
+            "core.presentation.api.v1.routers.research_false_positive_router",
+            "core.presentation.api.v1.routers.research_promotion_router",
         ]
     )
     app.include_router(health_router)
@@ -525,6 +554,17 @@ def create_app() -> FastAPI:
     app.include_router(oi_analytics_router, prefix="/api/v1")
     app.include_router(scanner_intelligence_router, prefix="/api/v1")
     app.include_router(execution_intelligence_router, prefix="/api/v1")
+    app.include_router(research_strategy_version_router)
+    app.include_router(research_optimization_router)
+    app.include_router(research_walk_forward_router)
+    app.include_router(research_monte_carlo_router)
+    app.include_router(research_performance_router)
+    app.include_router(research_correlation_router)
+    app.include_router(research_feature_importance_router)
+    app.include_router(research_regime_router)
+    app.include_router(research_symbol_ranking_router)
+    app.include_router(research_false_positive_router)
+    app.include_router(research_promotion_router)
 
     @app.get("/metrics", include_in_schema=False)
     async def metrics_endpoint() -> Response:
