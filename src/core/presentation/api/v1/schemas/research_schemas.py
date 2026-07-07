@@ -4,13 +4,26 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+
+class _ResearchBase(BaseModel):
+    """Base for all Phase 24 response models — coerces UUID → str before validation."""
+    model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_uuids(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return {k: str(v) if isinstance(v, UUID) else v for k, v in data.items()}
+        return data
 
 
 # ── Strategy Versions ─────────────────────────────────────────────────────────
 
-class VersionResponse(BaseModel):
+class VersionResponse(_ResearchBase):
     id: str
     name: str
     description: str | None = None
@@ -21,8 +34,6 @@ class VersionResponse(BaseModel):
     scoring_weights_sha256: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
-
-    model_config = {"from_attributes": True}
 
 
 class VersionListResponse(BaseModel):
@@ -52,7 +63,7 @@ class StartGridSearchRequest(BaseModel):
     lookback_days: int = 252
 
 
-class RunStatusResponse(BaseModel):
+class RunStatusResponse(_ResearchBase):
     id: str | None = None
     version_id: str | None = None
     run_type: str | None = None
@@ -63,10 +74,8 @@ class RunStatusResponse(BaseModel):
     completed_at: datetime | None = None
     created_at: datetime | None = None
 
-    model_config = {"from_attributes": True}
 
-
-class OptimizationResultResponse(BaseModel):
+class OptimizationResultResponse(_ResearchBase):
     id: int | None = None
     run_id: str | None = None
     params: dict = Field(default_factory=dict)
@@ -95,7 +104,7 @@ class StartWalkForwardRequest(BaseModel):
     n_windows: int = 5
 
 
-class WalkForwardWindowResponse(BaseModel):
+class WalkForwardWindowResponse(_ResearchBase):
     id: int | None = None
     run_id: str | None = None
     window_idx: int | None = None
@@ -134,7 +143,7 @@ class MonteCarloResultsResponse(BaseModel):
 
 # ── Performance ───────────────────────────────────────────────────────────────
 
-class PerformanceResponse(BaseModel):
+class PerformanceResponse(_ResearchBase):
     version_id: str
     sharpe: float | None = None
     sortino: float | None = None
@@ -158,7 +167,7 @@ class CompareVersionsResponse(BaseModel):
 
 # ── Correlations ──────────────────────────────────────────────────────────────
 
-class CorrelationResponse(BaseModel):
+class CorrelationResponse(_ResearchBase):
     component_a: str
     component_b: str
     pearson_r: float | None = None
@@ -173,7 +182,7 @@ class CorrelationListResponse(BaseModel):
 
 # ── Feature Importance ────────────────────────────────────────────────────────
 
-class FeatureImportanceResponse(BaseModel):
+class FeatureImportanceResponse(_ResearchBase):
     component: str
     importance_score: float | None = None
     rank: int | None = None
@@ -187,7 +196,7 @@ class FeatureImportanceListResponse(BaseModel):
 
 # ── Regime Performance ────────────────────────────────────────────────────────
 
-class RegimePerformanceResponse(BaseModel):
+class RegimePerformanceResponse(_ResearchBase):
     regime: str
     direction: str
     strategy_type: str | None = None
@@ -205,7 +214,7 @@ class RegimePerformanceListResponse(BaseModel):
 
 # ── Symbol Rankings ───────────────────────────────────────────────────────────
 
-class SymbolRankingResponse(BaseModel):
+class SymbolRankingResponse(_ResearchBase):
     ticker: str
     signal_count: int | None = None
     win_rate: float | None = None
@@ -224,7 +233,7 @@ class SymbolRankingsResponse(BaseModel):
 
 # ── False Positive Analysis ───────────────────────────────────────────────────
 
-class FalsePositiveResponse(BaseModel):
+class FalsePositiveResponse(_ResearchBase):
     component: str
     score_bucket: str
     false_positive_rate: float | None = None
@@ -255,7 +264,7 @@ class RejectPromotionRequest(BaseModel):
     reason: str | None = None
 
 
-class PromotionRequestResponse(BaseModel):
+class PromotionRequestResponse(_ResearchBase):
     id: str
     version_id: str
     version_name: str | None = None
