@@ -59,7 +59,7 @@ _VALID_EXECUTION_MODES = frozenset({"MANUAL", "AUTOMATIC"})
 
 class SignalConfig(BaseModel):
     ttl_minutes: int = 15
-    market_close_time: str = "15:15:00"
+    market_close_time: str = "15:30:00"
     dedup_ttl_minutes: int = 30
     gate: SignalGateConfig = SignalGateConfig()
     redis: SignalRedisConfig = SignalRedisConfig()
